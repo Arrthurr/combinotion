@@ -1,0 +1,1 @@
+export default function VisitsPage(){return <main id="content" className="stack"><h1>School visits</h1><p>Log a visit with its school, readers, books read, donations, and follow-up details.</p></main>}

@@ -1,0 +1,1 @@
+export default function OrdersPage(){return <main id="content" className="stack"><h1>Supplier orders</h1><p>Create one-supplier orders, track partial receipts, and leave undelivered copies outstanding.</p></main>}

@@ -1,0 +1,1 @@
+export function csv(headers:string[], rows:(string|number)[][]){const quote=(value:string|number)=>`"${String(value).replaceAll('"','""')}"`;return [headers,...rows].map(row=>row.map(quote).join(",")).join("\n");}

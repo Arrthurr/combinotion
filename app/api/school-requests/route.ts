@@ -1,0 +1,4 @@
+import { NextResponse } from "next/server";
+import { z } from "zod";
+const requestSchema=z.object({schoolName:z.string().min(2),address:z.string().min(5),contactName:z.string().min(2),email:z.string().email(),isbn:z.string().min(3),quantity:z.coerce.number().int().positive(),website:z.string().optional()});
+export async function POST(request:Request) { const secret=request.headers.get("x-school-request-secret"); if (process.env.SCHOOL_REQUEST_SHARED_SECRET && secret !== process.env.SCHOOL_REQUEST_SHARED_SECRET) return NextResponse.json({error:"Request service unavailable"},{status:403}); const body=requestSchema.safeParse(await request.json()); if(!body.success) return NextResponse.json({error:"Please correct the highlighted information."},{status:400}); if(body.data.website) return NextResponse.json({reference:"JFB-RECEIVED"}); return NextResponse.json({reference:`JFB-${crypto.randomUUID().slice(0,8).toUpperCase()}`},{status:201}); }

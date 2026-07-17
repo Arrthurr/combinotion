@@ -1,0 +1,4 @@
+import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
+const isPublicRoute = createRouteMatcher(["/", "/request-books(.*)", "/api/school-requests"]);
+export default clerkMiddleware(async (auth, request) => { if (!isPublicRoute(request)) await auth.protect(); });
+export const config = { matcher: ["/((?!_next|.*\\..*).*)", "/"] };

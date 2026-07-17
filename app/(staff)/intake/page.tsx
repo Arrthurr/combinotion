@@ -1,0 +1,1 @@
+export default function IntakePage(){return <main id="content" className="stack"><h1>Incoming forms</h1><p>Unmatched Google Form submissions stay here until they are attached or used to create a record.</p></main>}

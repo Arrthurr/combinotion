@@ -1,0 +1,2 @@
+import Link from "next/link";
+export default function Home() { return <main id="content" className="stack"><p className="muted">Joy for Books</p><h1>Books that reach young readers.</h1><p>Schools can request available donation titles. Staff can sign in to manage inventory and visits.</p><div className="row"><Link className="button" href="/request-books">Request books for your school</Link><Link href="/books">Staff workspace</Link></div></main>; }

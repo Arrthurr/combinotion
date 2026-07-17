@@ -1,0 +1,1 @@
+export default function SettingsPage(){return <main id="content" className="stack"><h1>Operations settings</h1><p>Configure the organization-wide low-stock threshold, approved Sheets, and staff allowlist.</p></main>}

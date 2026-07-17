@@ -1,0 +1,1 @@
+export default function InventoryPage(){return <main id="content" className="stack"><h1>Inventory</h1><p>Low-stock titles and shortage exceptions need review before additional copies can be requested.</p><section className="card"><h2>No stock movements yet</h2><p>Receive an order or record a reasoned opening balance to begin.</p></section></main>}

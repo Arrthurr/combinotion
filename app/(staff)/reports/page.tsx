@@ -1,0 +1,1 @@
+export default function ReportsPage(){return <main id="content" className="stack"><h1>Book popularity</h1><p>Compare independent request counts, donation counts, and average rubric scores.</p><button className="button">Export visible rows as CSV</button></main>}

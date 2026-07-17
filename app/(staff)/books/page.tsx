@@ -1,0 +1,2 @@
+import Link from "next/link";
+export default function BooksPage(){return <main id="content" className="stack"><h1>Book catalog</h1><p className="muted">Add titles with a title, author, and ISBN before receiving inventory.</p><Link className="button" href="/books/new">Add a title</Link><section className="card"><h2>Getting started</h2><p>Your catalog will show title identity, available copies, and recent operational history here.</p></section></main>}
