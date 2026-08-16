@@ -1,7 +1,0 @@
-services:
-  web:
-    command: npm run dev -- --hostname 0.0.0.0 --port "$PORT"
-    health: /request-books
-    portal:
-      title: Combinotion
-      description: Joy for Books operations app
