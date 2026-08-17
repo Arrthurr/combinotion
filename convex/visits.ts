@@ -77,6 +77,17 @@ async function reverseVisitEffects(
     ) {
       continue;
     }
+    const reservation = await ctx.db.get(book.consumedReservationId);
+    if (!reservation) {
+      throw new Error("Consumed reservation not found");
+    }
+    const request = await ctx.db.get(reservation.schoolRequestId);
+    if (!request) {
+      throw new Error("Consumed reservation request not found");
+    }
+    if (request.status !== "active") {
+      continue;
+    }
     await reverseInventoryMovement(
       ctx,
       reservationConsumptionSourceId(
@@ -85,10 +96,6 @@ async function reverseVisitEffects(
         visit.effectGeneration,
       ),
     );
-    const reservation = await ctx.db.get(book.consumedReservationId);
-    if (!reservation) {
-      throw new Error("Consumed reservation not found");
-    }
     await ctx.db.patch(reservation._id, {
       quantity: reservation.quantity + book.consumedQuantity,
       active: true,
@@ -123,6 +130,10 @@ async function insertVisitBooks(
   ctx: MutationCtx,
   visit: Doc<"visits">,
   books: VisitBookInput[],
+  preferredReservations: ReadonlyMap<
+    Id<"titles">,
+    Id<"reservations">
+  > = new Map(),
 ) {
   const activeReservations = await activeReservationsForSchool(
     ctx,
@@ -156,6 +167,7 @@ async function insertVisitBooks(
             quantity: reservation.quantity,
           })),
         book.donatedQuantity,
+        preferredReservations.get(book.titleId),
       );
     }
     if (consumption.consumptionStatus === "consumed") {
@@ -273,6 +285,10 @@ export const saveVisit = mutation({
     const cleanFollowUp = followUp?.trim();
 
     let savedVisit: Doc<"visits">;
+    let preferredReservations = new Map<
+      Id<"titles">,
+      Id<"reservations">
+    >();
     if (visitId === undefined) {
       const newVisitId = await ctx.db.insert("visits", {
         schoolId,
@@ -294,6 +310,14 @@ export const saveVisit = mutation({
         .query("visitBooks")
         .withIndex("by_visit", (q) => q.eq("visitId", visitId))
         .collect();
+      preferredReservations = new Map(
+        priorBooks.flatMap((book) =>
+          book.consumptionStatus === "consumed" &&
+          book.consumedReservationId !== undefined
+            ? [[book.titleId, book.consumedReservationId] as const]
+            : [],
+        ),
+      );
       await reverseVisitEffects(ctx, visit, priorBooks);
       await deleteVisitChildren(ctx, visitId, priorBooks);
       await ctx.db.replace(visitId, {
@@ -323,7 +347,12 @@ export const saveVisit = mutation({
         kind: "reader",
       });
     }
-    await insertVisitBooks(ctx, savedVisit, books);
+    await insertVisitBooks(
+      ctx,
+      savedVisit,
+      books,
+      preferredReservations,
+    );
     return savedVisit._id;
   },
 });

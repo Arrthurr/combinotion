@@ -45,6 +45,37 @@ describe("visit inventory effects", () => {
     });
   });
 
+  it("keeps a preferred reservation when several candidates match", () => {
+    expect(
+      matchVisitReservation(
+        [
+          { reservationId: "reservation-1", quantity: 6 },
+          { reservationId: "reservation-2", quantity: 2 },
+        ],
+        4,
+        "reservation-1",
+      ),
+    ).toEqual({
+      consumptionStatus: "consumed",
+      reservationId: "reservation-1",
+      consumedQuantity: 4,
+    });
+  });
+
+  it("ignores a preferred reservation that is no longer a candidate", () => {
+    expect(
+      matchVisitReservation(
+        [{ reservationId: "reservation-2", quantity: 2 }],
+        4,
+        "reservation-1",
+      ),
+    ).toEqual({
+      consumptionStatus: "consumed",
+      reservationId: "reservation-2",
+      consumedQuantity: 2,
+    });
+  });
+
   it("includes the visit effect generation in stable source IDs", () => {
     expect(donationSourceId("visit-1", "title-1", 2)).toBe(
       "donation:visit-1:title-1:2",

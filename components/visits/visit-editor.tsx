@@ -25,6 +25,35 @@ type DraftBook = {
   readAloud: boolean;
 };
 
+type OverlayPerson = {
+  personId: Id<"people">;
+  name: string;
+};
+
+function peopleOptions(
+  people: { _id: Id<"people">; name: string }[] | undefined,
+  overlay: OverlayPerson[],
+  selectedIds: Id<"people">[],
+) {
+  const listed = new Map(
+    (people ?? []).map((person) => [person._id, person.name]),
+  );
+  for (const person of overlay) {
+    if (!listed.has(person.personId)) {
+      listed.set(person.personId, person.name);
+    }
+  }
+  for (const personId of selectedIds) {
+    if (!listed.has(personId)) {
+      listed.set(personId, "Selected person");
+    }
+  }
+  return [...listed.entries()].map(([personId, name]) => ({
+    personId,
+    name,
+  }));
+}
+
 function dateInputValue(timestamp: number) {
   return new Date(timestamp).toISOString().slice(0, 10);
 }
@@ -104,6 +133,7 @@ function VisitEditorLive({ visitId }: { visitId?: Id<"visits"> }) {
   const saveVisit = useMutation(api.visits.saveVisit);
   const deleteVisit = useMutation(api.visits.deleteVisit);
   const loadedGeneration = useRef<number | null>(null);
+  const skipNextHydrate = useRef(false);
   const [schoolId, setSchoolId] = useState<Id<"schools"> | "">("");
   const [occurredAt, setOccurredAt] = useState(
     dateInputValue(Date.now()),
@@ -115,19 +145,35 @@ function VisitEditorLive({ visitId }: { visitId?: Id<"visits"> }) {
   const [readerPersonIds, setReaderPersonIds] = useState<Id<"people">[]>(
     [],
   );
+  const [personOverlay, setPersonOverlay] = useState<OverlayPerson[]>(
+    [],
+  );
   const [books, setBooks] = useState<DraftBook[]>([
     { key: 0, titleId: "", donatedQuantity: 0, readAloud: true },
   ]);
   const [nextBookKey, setNextBookKey] = useState(1);
   const [status, setStatus] = useState("");
   const [deleted, setDeleted] = useState(false);
+  const [dirty, setDirty] = useState(false);
+  const [busy, setBusy] = useState(false);
 
   useEffect(() => {
-    if (
-      existing === undefined ||
-      existing === null ||
-      loadedGeneration.current === existing.effectGeneration
-    ) {
+    if (existing === undefined || existing === null) {
+      return;
+    }
+    if (loadedGeneration.current === existing.effectGeneration) {
+      return;
+    }
+    if (skipNextHydrate.current) {
+      skipNextHydrate.current = false;
+      loadedGeneration.current = existing.effectGeneration;
+      return;
+    }
+    if (loadedGeneration.current !== null && dirty) {
+      loadedGeneration.current = existing.effectGeneration;
+      setStatus(
+        "This visit was updated elsewhere. Your unsaved changes were kept.",
+      );
       return;
     }
     loadedGeneration.current = existing.effectGeneration;
@@ -138,6 +184,16 @@ function VisitEditorLive({ visitId }: { visitId?: Id<"visits"> }) {
       existing.staffPresent.map((person) => person.personId),
     );
     setReaderPersonIds(existing.readers.map((person) => person.personId));
+    setPersonOverlay([
+      ...existing.staffPresent.map((person) => ({
+        personId: person.personId,
+        name: person.name,
+      })),
+      ...existing.readers.map((person) => ({
+        personId: person.personId,
+        name: person.name,
+      })),
+    ]);
     setBooks(
       existing.books.map((book, index) => ({
         key: index,
@@ -147,28 +203,39 @@ function VisitEditorLive({ visitId }: { visitId?: Id<"visits"> }) {
       })),
     );
     setNextBookKey(existing.books.length);
-  }, [existing]);
+    setDirty(false);
+  }, [existing, dirty]);
+
+  function markDirty() {
+    setDirty(true);
+  }
 
   function selectSchool(value: string) {
     const school = schools?.find((candidate) => candidate._id === value);
+    markDirty();
     setSchoolId(school?._id ?? "");
   }
 
   function selectPeople(
     values: string[],
+    current: Id<"people">[],
     update: (personIds: Id<"people">[]) => void,
   ) {
-    update(
+    const listedIds = new Set((people ?? []).map((person) => person._id));
+    const pending = current.filter((personId) => !listedIds.has(personId));
+    const selectedListed =
       people
         ?.filter((person) => values.includes(person._id))
-        .map((person) => person._id) ?? [],
-    );
+        .map((person) => person._id) ?? [];
+    markDirty();
+    update([...pending, ...selectedListed]);
   }
 
   function updateBook(
     key: number,
     update: Partial<Omit<DraftBook, "key">>,
   ) {
+    markDirty();
     setBooks((current) =>
       current.map((book) =>
         book.key === key ? { ...book, ...update } : book,
@@ -182,6 +249,7 @@ function VisitEditorLive({ visitId }: { visitId?: Id<"visits"> }) {
   }
 
   function addBook(titleId: Id<"titles"> | "" = "") {
+    markDirty();
     setBooks((current) => [
       ...current,
       {
@@ -204,20 +272,32 @@ function VisitEditorLive({ visitId }: { visitId?: Id<"visits"> }) {
   }
 
   function removeBook(key: number) {
+    markDirty();
     setBooks((current) => current.filter((book) => book.key !== key));
   }
 
   function addSelectedPerson(
-    personId: Id<"people">,
+    created: OverlayPerson,
     update: (value: (current: Id<"people">[]) => Id<"people">[]) => void,
   ) {
+    markDirty();
+    setPersonOverlay((current) =>
+      current.some((person) => person.personId === created.personId)
+        ? current
+        : [...current, created],
+    );
     update((current) =>
-      current.includes(personId) ? current : [...current, personId],
+      current.includes(created.personId)
+        ? current
+        : [...current, created.personId],
     );
   }
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (busy) {
+      return;
+    }
     if (schoolId === "") {
       setStatus("Choose a school.");
       return;
@@ -241,6 +321,7 @@ function VisitEditorLive({ visitId }: { visitId?: Id<"visits"> }) {
       setStatus("Choose a title for every book.");
       return;
     }
+    setBusy(true);
     setStatus(savedVisitId ? "Updating visit…" : "Saving visit…");
     try {
       const nextVisitId = await saveVisit({
@@ -252,19 +333,24 @@ function VisitEditorLive({ visitId }: { visitId?: Id<"visits"> }) {
         readerPersonIds,
         books: completeBooks,
       });
+      skipNextHydrate.current = true;
+      setDirty(false);
       setSavedVisitId(nextVisitId);
       setStatus(savedVisitId ? "Visit updated." : "Visit saved.");
     } catch (error) {
       setStatus(
         error instanceof Error ? error.message : "Could not save visit.",
       );
+    } finally {
+      setBusy(false);
     }
   }
 
   async function removeVisit() {
-    if (savedVisitId === undefined) {
+    if (savedVisitId === undefined || busy) {
       return;
     }
+    setBusy(true);
     setStatus("Deleting visit…");
     try {
       await deleteVisit({ visitId: savedVisitId });
@@ -274,6 +360,8 @@ function VisitEditorLive({ visitId }: { visitId?: Id<"visits"> }) {
       setStatus(
         error instanceof Error ? error.message : "Could not delete visit.",
       );
+    } finally {
+      setBusy(false);
     }
   }
 
@@ -332,14 +420,22 @@ function VisitEditorLive({ visitId }: { visitId?: Id<"visits"> }) {
             ))}
           </select>
         </label>
-        <InlineCreateSchool onCreated={setSchoolId} />
+        <InlineCreateSchool
+          onCreated={(createdSchoolId) => {
+            markDirty();
+            setSchoolId(createdSchoolId);
+          }}
+        />
         <label>
           Occurred at
           <input
             required
             type="date"
             value={occurredAt}
-            onChange={(event) => setOccurredAt(event.target.value)}
+            onChange={(event) => {
+              markDirty();
+              setOccurredAt(event.target.value);
+            }}
           />
         </label>
         <label>
@@ -353,22 +449,25 @@ function VisitEditorLive({ visitId }: { visitId?: Id<"visits"> }) {
                   event.target.selectedOptions,
                   (option) => option.value,
                 ),
+                staffPersonIds,
                 setStaffPersonIds,
               )
             }
           >
-            {people.map((person) => (
-              <option key={person._id} value={person._id}>
-                {person.name}
-              </option>
-            ))}
+            {peopleOptions(people, personOverlay, staffPersonIds).map(
+              (person) => (
+                <option key={person.personId} value={person.personId}>
+                  {person.name}
+                </option>
+              ),
+            )}
           </select>
         </label>
         <InlineCreatePerson
           defaultRole="volunteer"
           selectionLabel="staff member"
-          onCreated={(personId) =>
-            addSelectedPerson(personId, setStaffPersonIds)
+          onCreated={(created) =>
+            addSelectedPerson(created, setStaffPersonIds)
           }
         />
         <label>
@@ -383,22 +482,25 @@ function VisitEditorLive({ visitId }: { visitId?: Id<"visits"> }) {
                   event.target.selectedOptions,
                   (option) => option.value,
                 ),
+                readerPersonIds,
                 setReaderPersonIds,
               )
             }
           >
-            {people.map((person) => (
-              <option key={person._id} value={person._id}>
-                {person.name}
-              </option>
-            ))}
+            {peopleOptions(people, personOverlay, readerPersonIds).map(
+              (person) => (
+                <option key={person.personId} value={person.personId}>
+                  {person.name}
+                </option>
+              ),
+            )}
           </select>
         </label>
         <InlineCreatePerson
           defaultRole="reader"
           selectionLabel="reader"
-          onCreated={(personId) =>
-            addSelectedPerson(personId, setReaderPersonIds)
+          onCreated={(created) =>
+            addSelectedPerson(created, setReaderPersonIds)
           }
         />
         <fieldset className="stack">
@@ -475,17 +577,21 @@ function VisitEditorLive({ visitId }: { visitId?: Id<"visits"> }) {
           Follow-up
           <textarea
             value={followUp}
-            onChange={(event) => setFollowUp(event.target.value)}
+            onChange={(event) => {
+              markDirty();
+              setFollowUp(event.target.value);
+            }}
           />
         </label>
         <div className="row">
-          <button className="button">
+          <button className="button" disabled={busy}>
             {savedVisitId ? "Update visit" : "Save visit"}
           </button>
           {savedVisitId ? (
             <button
               className="button"
               type="button"
+              disabled={busy}
               onClick={removeVisit}
             >
               Delete visit

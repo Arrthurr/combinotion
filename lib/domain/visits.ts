@@ -20,7 +20,20 @@ export type VisitReservationMatch<ReservationId = string> =
 export function matchVisitReservation<ReservationId>(
   candidates: VisitReservationCandidate<ReservationId>[],
   donatedQuantity: number,
+  preferredReservationId?: ReservationId,
 ): VisitReservationMatch<ReservationId> {
+  if (preferredReservationId !== undefined) {
+    const preferred = candidates.find(
+      (candidate) => candidate.reservationId === preferredReservationId,
+    );
+    if (preferred !== undefined) {
+      return {
+        consumptionStatus: "consumed",
+        reservationId: preferred.reservationId,
+        consumedQuantity: Math.min(donatedQuantity, preferred.quantity),
+      };
+    }
+  }
   if (candidates.length === 0) {
     return { consumptionStatus: "none", consumedQuantity: 0 };
   }

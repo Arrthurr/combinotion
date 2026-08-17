@@ -72,7 +72,7 @@ export function InlineCreatePerson({
 }: {
   defaultRole: Role;
   selectionLabel: string;
-  onCreated: (personId: Id<"people">) => void;
+  onCreated: (created: { personId: Id<"people">; name: string }) => void;
 }) {
   const createPerson = useMutation(api.people.createPerson);
   const [status, setStatus] = useState("");
@@ -86,15 +86,16 @@ export function InlineCreatePerson({
       setStatus("Choose at least one role.");
       return;
     }
+    const name = String(data.get("name") ?? "");
     setStatus("Saving person…");
     try {
       const personId = await createPerson({
-        name: String(data.get("name") ?? ""),
+        name,
         email: String(data.get("email") ?? ""),
         roles,
       });
       form.reset();
-      onCreated(personId);
+      onCreated({ personId, name });
       setStatus(`Person created and selected as ${selectionLabel}.`);
     } catch (error) {
       setStatus(
