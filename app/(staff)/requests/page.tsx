@@ -1,1 +1,14 @@
-export default function RequestsPage(){return <main id="content" className="stack"><h1>School requests</h1><p className="muted">Active requests are ordered by age. Declining or cancelling one releases its reservations.</p><section className="card"><h2>All caught up</h2><p>No active requests or reservation exceptions require review.</p></section></main>}
+import { RequestQueue } from "@/components/requests/request-queue";
+
+export default function RequestsPage() {
+  return (
+    <main id="content" className="stack">
+      <h1>School requests</h1>
+      <p className="muted">
+        Active requests are ordered by age. Declining or cancelling one
+        releases its reservations.
+      </p>
+      <RequestQueue />
+    </main>
+  );
+}

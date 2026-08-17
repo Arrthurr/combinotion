@@ -9,6 +9,7 @@ export default defineConfig({
     env: {
       ...process.env,
       NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: "",
+      NEXT_PUBLIC_E2E_UNCONFIGURED_REQUESTS: "1",
       CLERK_SECRET_KEY: "",
     },
   },
