@@ -57,7 +57,7 @@ describe("staff titles", () => {
     ]);
   });
 
-  it("omits notes from listRequestable", async () => {
+  it("returns only the public requestable-title projection", async () => {
     const t = convexTest(schema, modules);
     await t.run(async (ctx) => {
       await ctx.db.insert("titles", {
@@ -71,8 +71,14 @@ describe("staff titles", () => {
       });
     });
     const requestable = await t.query(api.titles.listRequestable, {});
-    expect(requestable).toHaveLength(1);
-    expect(requestable[0]).not.toHaveProperty("notes");
+    expect(requestable).toEqual([
+      {
+        title: "Book",
+        author: "Ann",
+        isbn: "1",
+        availableQuantity: 2,
+      },
+    ]);
   });
 
   it("hides a title with no availability from listRequestable", async () => {

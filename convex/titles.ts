@@ -4,10 +4,35 @@ import { availableToRequest } from "./lib/availability";
 import { requireStaff } from "./lib/auth";
 import { required } from "./lib/validation";
 
-export type TitleProjection = { title: string; author: string; isbn: string; quantityOnHand: number; activeReservedQuantity: number; notes?: string; coverUrl?: string };
+export type TitleProjection = {
+  title: string;
+  author: string;
+  isbn: string;
+  quantityOnHand: number;
+  activeReservedQuantity: number;
+  coverUrl?: string;
+};
+
+export type RequestableTitle = {
+  title: string;
+  author: string;
+  isbn: string;
+  availableQuantity: number;
+  coverUrl?: string;
+};
+
 export const projectRequestable = (titles: TitleProjection[]) =>
   titles
-    .map(({ notes, ...title }) => ({ ...title, availableQuantity: availableToRequest(title.quantityOnHand, title.activeReservedQuantity) }))
+    .map((title): RequestableTitle => ({
+      title: title.title,
+      author: title.author,
+      isbn: title.isbn,
+      availableQuantity: availableToRequest(
+        title.quantityOnHand,
+        title.activeReservedQuantity,
+      ),
+      ...(title.coverUrl === undefined ? {} : { coverUrl: title.coverUrl }),
+    }))
     .filter((title) => title.availableQuantity > 0);
 
 export const createTitle = mutation({
@@ -48,5 +73,6 @@ export const getTitle = query({
 
 export const listRequestable = query({
   args: {},
-  handler: async (ctx) => projectRequestable(await ctx.db.query("titles").collect()),
+  handler: async (ctx) =>
+    projectRequestable(await ctx.db.query("titles").collect()),
 });
