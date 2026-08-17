@@ -2,6 +2,10 @@
 import { convexTest } from "convex-test";
 import { describe, expect, it } from "vitest";
 import { api, internal } from "./_generated/api";
+import {
+  appendInventoryMovement,
+  reverseInventoryMovement,
+} from "./inventory";
 import schema from "./schema";
 
 const modules = import.meta.glob("./**/!(*.*.*)*.*s");
@@ -230,5 +234,45 @@ describe("staff inventory", () => {
     });
     expect(review[0].quantityOnHand).toBe(5);
     expect(history).toHaveLength(1);
+  });
+
+  it("reverses a source once and ignores missing sources", async () => {
+    const { t, asStaff } = await createStaffTest();
+    const titleId = await createTitle(asStaff);
+    await asStaff.mutation(api.inventory.recordOpeningBalance, {
+      titleId,
+      quantity: 10,
+      reason: "Initial count",
+    });
+    await t.run(async (ctx) => {
+      await appendInventoryMovement(ctx, {
+        titleId,
+        kind: "donation",
+        quantity: 4,
+        sourceId: "donation:visit-1:title-1:1",
+      });
+      await reverseInventoryMovement(
+        ctx,
+        "donation:visit-1:title-1:1",
+      );
+      await reverseInventoryMovement(
+        ctx,
+        "donation:visit-1:title-1:1",
+      );
+      await reverseInventoryMovement(ctx, "missing");
+    });
+
+    const review = await asStaff.query(api.inventory.listReview, {});
+    const history = await asStaff.query(api.inventory.listHistory, {
+      titleId,
+    });
+    expect(review[0].quantityOnHand).toBe(10);
+    expect(
+      history.filter(
+        (movement) =>
+          movement.sourceId ===
+          "reverse:donation:visit-1:title-1:1",
+      ),
+    ).toHaveLength(1);
   });
 });
