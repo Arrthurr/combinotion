@@ -1,6 +1,7 @@
 import { v } from "convex/values";
 import { internalMutation } from "./_generated/server";
 
+/** `npx convex run staff:seedStaff '{"clerkId":"<clerk subject>","email":"<email>"}'` */
 export const seedStaff = internalMutation({
   args: { clerkId: v.string(), email: v.string() },
   handler: async (ctx, { clerkId, email }) => {
