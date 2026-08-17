@@ -1,2 +1,8 @@
-type IdentityContext = { auth:{ getUserIdentity():Promise<{subject:string}|null> }, db:{ query(name:"staff"): { withIndex(name:"by_clerkId", predicate:(q:{eq:(field:"clerkId", value:string)=>unknown})=>unknown): { unique():Promise<unknown> } } } };
-export async function requireStaff(ctx: IdentityContext) { const identity=await ctx.auth.getUserIdentity(); if(!identity) throw new Error("Authentication required"); const member=await ctx.db.query("staff").withIndex("by_clerkId",q=>q.eq("clerkId",identity.subject)).unique(); if(!member) throw new Error("Staff membership required"); return identity; }
+import type { MutationCtx, QueryCtx } from "../_generated/server";
+export async function requireStaff(ctx: QueryCtx | MutationCtx) {
+  const identity = await ctx.auth.getUserIdentity();
+  if (!identity) throw new Error("Authentication required");
+  const member = await ctx.db.query("staff").withIndex("by_clerkId", (q) => q.eq("clerkId", identity.subject)).unique();
+  if (!member) throw new Error("Staff membership required");
+  return identity;
+}
