@@ -10,8 +10,36 @@ export default defineSchema({
   orders:defineTable({ supplierId:v.id("suppliers"), status:v.union(v.literal("needed"),v.literal("ordered"),v.literal("received")), expectedAt:v.optional(v.number()) }),
   orderLines:defineTable({ orderId:v.id("orders"), titleId:v.id("titles"), orderedQuantity:v.number(), receivedQuantity:v.number() }).index("by_order",["orderId"]),
   inventoryMovements:defineTable({ titleId:v.id("titles"), kind:v.string(), quantity:v.number(), reason:v.optional(v.string()), sourceId:v.string(), createdAt:v.number() }).index("by_title",["titleId"]).index("by_source",["sourceId"]),
-  schoolRequests:defineTable({ schoolId:v.optional(v.id("schools")), schoolName:v.string(), status:v.string(), createdAt:v.number() }).index("by_status_created",["status","createdAt"]),
-  reservations:defineTable({ titleId:v.id("titles"), schoolRequestId:v.id("schoolRequests"), quantity:v.number(), active:v.boolean() }).index("by_title_active",["titleId","active"]),
+  schoolRequests: defineTable({
+    schoolId: v.optional(v.id("schools")),
+    schoolName: v.string(),
+    schoolAddress: v.string(),
+    contactName: v.string(),
+    email: v.string(),
+    status: v.union(
+      v.literal("active"),
+      v.literal("cancelled"),
+      v.literal("declined"),
+    ),
+    matchStatus: v.union(
+      v.literal("attached"),
+      v.literal("unmatched"),
+      v.literal("ambiguous"),
+    ),
+    reference: v.string(),
+    idempotencyKey: v.optional(v.string()),
+    createdAt: v.number(),
+  })
+    .index("by_status_created", ["status", "createdAt"])
+    .index("by_idempotencyKey", ["idempotencyKey"]),
+  reservations: defineTable({
+    titleId: v.id("titles"),
+    schoolRequestId: v.id("schoolRequests"),
+    quantity: v.number(),
+    active: v.boolean(),
+  })
+    .index("by_title_active", ["titleId", "active"])
+    .index("by_request", ["schoolRequestId"]),
   visits:defineTable({ schoolId:v.id("schools"), occurredAt:v.number(), followUp:v.optional(v.string()) }).index("by_school",["schoolId"]),
   visitBooks:defineTable({ visitId:v.id("visits"), titleId:v.id("titles"), donatedQuantity:v.number(), readAloud:v.boolean() }).index("by_visit",["visitId"]),
   reviews:defineTable({ titleId:v.id("titles"), reviewer:v.string(), feedback:v.string(), score:v.number(), approved:v.boolean() }),

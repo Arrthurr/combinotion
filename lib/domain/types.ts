@@ -37,6 +37,15 @@ export type OrderLineQuantities = {
   receivedQuantity: number;
 };
 
+export type RequestStatus = "active" | "cancelled" | "declined";
+
+export type MatchStatus = "attached" | "unmatched" | "ambiguous";
+
+export type RequestLine = {
+  isbn: string;
+  quantity: number;
+};
+
 export type InventoryReview = StockState & {
   availableQuantity: number;
   lowStock: boolean;
