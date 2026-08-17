@@ -13,8 +13,10 @@ import type * as inventory from "../inventory.js";
 import type * as lib_auth from "../lib/auth.js";
 import type * as lib_availability from "../lib/availability.js";
 import type * as lib_validation from "../lib/validation.js";
+import type * as orders from "../orders.js";
 import type * as schoolRequests from "../schoolRequests.js";
 import type * as staff from "../staff.js";
+import type * as suppliers from "../suppliers.js";
 import type * as titles from "../titles.js";
 import type * as visits from "../visits.js";
 
@@ -30,8 +32,10 @@ declare const fullApi: ApiFromModules<{
   "lib/auth": typeof lib_auth;
   "lib/availability": typeof lib_availability;
   "lib/validation": typeof lib_validation;
+  orders: typeof orders;
   schoolRequests: typeof schoolRequests;
   staff: typeof staff;
+  suppliers: typeof suppliers;
   titles: typeof titles;
   visits: typeof visits;
 }>;
