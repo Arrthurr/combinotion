@@ -10,8 +10,12 @@ import { positiveInteger, required } from "./lib/validation";
 import {
   applyMovement,
   reviewState,
+  reverseMovement,
 } from "../lib/domain/inventory";
-import type { MovementKind } from "../lib/domain/types";
+import type {
+  MovementKind,
+  StockState,
+} from "../lib/domain/types";
 
 type MovementInput = {
   titleId: Id<"titles">;
@@ -20,6 +24,26 @@ type MovementInput = {
   reason?: string;
   sourceId: string;
 };
+
+async function persistInventoryMovement(
+  ctx: MutationCtx,
+  input: MovementInput,
+  createdAt: number,
+  next: StockState,
+) {
+  await ctx.db.insert("inventoryMovements", {
+    titleId: input.titleId,
+    kind: input.kind,
+    quantity: input.quantity,
+    ...(input.reason === undefined ? {} : { reason: input.reason }),
+    sourceId: input.sourceId,
+    createdAt,
+  });
+  await ctx.db.patch(input.titleId, {
+    quantityOnHand: next.quantityOnHand,
+    activeReservedQuantity: next.activeReservedQuantity,
+  });
+}
 
 export async function appendInventoryMovement(
   ctx: MutationCtx,
@@ -47,19 +71,79 @@ export async function appendInventoryMovement(
     sourceId: input.sourceId,
     createdAt,
   });
-  await ctx.db.insert("inventoryMovements", {
-    titleId: input.titleId,
-    kind: input.kind,
-    quantity: input.quantity,
-    ...(input.reason === undefined ? {} : { reason: input.reason }),
-    sourceId: input.sourceId,
-    createdAt,
-  });
-  await ctx.db.patch(input.titleId, {
-    quantityOnHand: next.quantityOnHand,
-    activeReservedQuantity: next.activeReservedQuantity,
-  });
+  await persistInventoryMovement(ctx, input, createdAt, next);
   return input.titleId;
+}
+
+function oppositeMovement(
+  kind: MovementKind,
+  quantity: number,
+): Pick<MovementInput, "kind" | "quantity"> {
+  switch (kind) {
+    case "receipt":
+    case "openingBalance":
+      return { kind: "donation", quantity };
+    case "adjustment":
+      return { kind: "adjustment", quantity: -quantity };
+    case "donation":
+      return { kind: "receipt", quantity };
+    case "reservation":
+      return { kind: "release", quantity };
+    case "release":
+    case "reservationConsumption":
+      return { kind: "reservation", quantity };
+    default: {
+      const unhandledKind: never = kind;
+      throw new Error(`Unhandled movement kind: ${unhandledKind}`);
+    }
+  }
+}
+
+export async function reverseInventoryMovement(
+  ctx: MutationCtx,
+  sourceId: string,
+) {
+  const original = await ctx.db
+    .query("inventoryMovements")
+    .withIndex("by_source", (q) => q.eq("sourceId", sourceId))
+    .unique();
+  if (!original) {
+    return null;
+  }
+  const reverseSourceId = `reverse:${sourceId}`;
+  const existingReverse = await ctx.db
+    .query("inventoryMovements")
+    .withIndex("by_source", (q) => q.eq("sourceId", reverseSourceId))
+    .unique();
+  if (existingReverse) {
+    return existingReverse.titleId;
+  }
+  const title = await ctx.db.get(original.titleId);
+  if (!title) {
+    throw new Error("Title not found");
+  }
+  const createdAt = Date.now();
+  const next = reverseMovement(title, {
+    id: original._id,
+    kind: original.kind,
+    quantity: original.quantity,
+    reason: original.reason,
+    sourceId: original.sourceId,
+    createdAt: original.createdAt,
+  });
+  const opposite = oppositeMovement(original.kind, original.quantity);
+  await persistInventoryMovement(
+    ctx,
+    {
+      titleId: original.titleId,
+      ...opposite,
+      ...(original.reason === undefined ? {} : { reason: original.reason }),
+      sourceId: reverseSourceId,
+    },
+    createdAt,
+    next,
+  );
+  return original.titleId;
 }
 
 export const listReview = query({

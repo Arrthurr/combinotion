@@ -1,11 +1,63 @@
-export type Role =
-  | "donor"
-  | "professional"
-  | "volunteer"
-  | "schoolStaff"
-  | "board"
-  | "reader"
-  | "reviewer";
+export const ROLES = [
+  "donor",
+  "professional",
+  "volunteer",
+  "schoolStaff",
+  "board",
+  "reader",
+  "reviewer",
+] as const;
+
+export type Role = (typeof ROLES)[number];
+
+export type Person = {
+  name: string;
+  email?: string;
+  roles: Role[];
+};
+
+export type School = {
+  name: string;
+  normalizedName: string;
+  address: string;
+  normalizedAddress: string;
+};
+
+export type SchoolContact<SchoolId = string, PersonId = string> = {
+  schoolId: SchoolId;
+  personId: PersonId;
+};
+
+export type Visit<SchoolId = string> = {
+  schoolId: SchoolId;
+  occurredAt: number;
+  followUp?: string;
+  effectGeneration: number;
+};
+
+export type VisitPersonKind = "staff" | "reader";
+
+export type VisitPerson<VisitId = string, PersonId = string> = {
+  visitId: VisitId;
+  personId: PersonId;
+  kind: VisitPersonKind;
+};
+
+export type ConsumptionStatus = "consumed" | "none" | "ambiguous";
+
+export type VisitBook<
+  VisitId = string,
+  TitleId = string,
+  ReservationId = string,
+> = {
+  visitId: VisitId;
+  titleId: TitleId;
+  donatedQuantity: number;
+  readAloud: boolean;
+  consumptionStatus: ConsumptionStatus;
+  consumedReservationId?: ReservationId;
+  consumedQuantity: number;
+};
 
 export type MovementKind =
   | "openingBalance"
