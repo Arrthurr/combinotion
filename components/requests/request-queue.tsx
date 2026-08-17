@@ -93,7 +93,8 @@ export function RequestQueue() {
 
 function RequestQueueLive() {
   const active = useQuery(api.schoolRequests.listActive);
-  const exceptions = useQuery(api.schoolRequests.listExceptions);
+  const requestExceptions = useQuery(api.schoolRequests.listExceptions);
+  const visitExceptions = useQuery(api.visits.listConsumptionExceptions);
   const resolveRequest = useMutation(
     api.schoolRequests.resolveRequest,
   );
@@ -129,7 +130,11 @@ function RequestQueueLive() {
     }
   }
 
-  if (active === undefined || exceptions === undefined) {
+  if (
+    active === undefined ||
+    requestExceptions === undefined ||
+    visitExceptions === undefined
+  ) {
     return (
       <p className="muted" role="status">
         Loading school requests…
@@ -144,11 +149,11 @@ function RequestQueueLive() {
       </p>
       <section className="stack" aria-labelledby="exceptions-heading">
         <h2 id="exceptions-heading">Request exceptions</h2>
-        {exceptions.length === 0 ? (
+        {requestExceptions.length === 0 && visitExceptions.length === 0 ? (
           <p className="muted">No request exceptions need review.</p>
         ) : (
           <ul className="card stack">
-            {exceptions.map((request) => (
+            {requestExceptions.map((request) => (
               <li key={request._id}>
                 <strong>{request.schoolName}</strong> ·{" "}
                 {request.matchStatus}
@@ -158,6 +163,12 @@ function RequestQueueLive() {
                       .map((line) => line.titleName)
                       .join(", ")}`
                   : ""}
+              </li>
+            ))}
+            {visitExceptions.map((exception) => (
+              <li key={exception._id}>
+                <strong>{exception.schoolName}</strong> ·{" "}
+                {exception.titleName} · ambiguous reservation match
               </li>
             ))}
           </ul>

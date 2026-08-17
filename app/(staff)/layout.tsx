@@ -1,6 +1,7 @@
 import { UserButton } from "@clerk/nextjs";
 import Link from "next/link";
 import type { ReactNode } from "react";
+import { UnconfiguredStaff } from "@/components/staff/unconfigured-staff";
 
 const nav = [
   { href: "/books", label: "Books" },
@@ -8,25 +9,17 @@ const nav = [
   { href: "/orders", label: "Orders" },
   { href: "/requests", label: "Requests" },
   { href: "/visits", label: "Visits" },
+  { href: "/people", label: "People" },
+  { href: "/schools", label: "Schools" },
   { href: "/reports", label: "Reports" },
   { href: "/settings", label: "Settings" },
 ] as const;
 
 export default function StaffLayout({ children }: { children: ReactNode }) {
   if (!process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY) {
-    return (
-      <main id="content" className="stack">
-        <h1>Staff authentication is not configured</h1>
-        <p>
-          Add the Clerk environment values in <code>.env.local</code> before using
-          the staff workspace.
-        </p>
-      </main>
-    );
+    return <UnconfiguredStaff />;
   }
 
-  // Route protection is enforced in middleware.ts via auth.protect().
-  // Authenticated users reach this layout; unauthenticated users are redirected.
   return (
     <>
       <header>
