@@ -8,5 +8,7 @@ describe("new title page", () => {
     const html = renderToStaticMarkup(createElement(NewTitlePage));
     expect(html).toContain("Add a title");
     expect(html).not.toContain("Title new");
+    expect(html).toContain("Saving titles is not available yet.");
+    expect(html).toContain("disabled");
   });
 });
