@@ -16,12 +16,15 @@ import type * as lib_availability from "../lib/availability.js";
 import type * as lib_validation from "../lib/validation.js";
 import type * as orders from "../orders.js";
 import type * as people from "../people.js";
+import type * as reports from "../reports.js";
+import type * as reviews from "../reviews.js";
 import type * as schoolRequests from "../schoolRequests.js";
 import type * as schools from "../schools.js";
 import type * as staff from "../staff.js";
 import type * as suppliers from "../suppliers.js";
 import type * as titles from "../titles.js";
 import type * as views from "../views.js";
+import type * as visitRecaps from "../visitRecaps.js";
 import type * as visits from "../visits.js";
 
 import type {
@@ -39,12 +42,15 @@ declare const fullApi: ApiFromModules<{
   "lib/validation": typeof lib_validation;
   orders: typeof orders;
   people: typeof people;
+  reports: typeof reports;
+  reviews: typeof reviews;
   schoolRequests: typeof schoolRequests;
   schools: typeof schools;
   staff: typeof staff;
   suppliers: typeof suppliers;
   titles: typeof titles;
   views: typeof views;
+  visitRecaps: typeof visitRecaps;
   visits: typeof visits;
 }>;
 
