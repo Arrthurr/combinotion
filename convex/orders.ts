@@ -159,6 +159,7 @@ export const markOrdered = mutation({
     }
     await ctx.db.patch(orderId, {
       status: "ordered",
+      orderedAt: Date.now(),
       ...(expectedAt === undefined ? {} : { expectedAt }),
     });
     return orderId;

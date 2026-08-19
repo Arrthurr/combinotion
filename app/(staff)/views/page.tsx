@@ -1,1 +1,18 @@
-export default function ViewsPage(){return <main id="content" className="stack"><h1>Operations views</h1><section className="card"><h2>Table</h2><p>Choose columns for manual entry and day-to-day review.</p></section><section className="card"><h2>Visit board</h2><p>Move school visits through confirmation, follow-up, and securing books.</p></section><section className="card"><h2>Timeline</h2><p>See order, expected delivery, and receipt dates in one chronology.</p></section></main>}
+import { OperationsTimeline } from "@/components/views/operations-timeline";
+import { TableView } from "@/components/views/table-view";
+import { VisitBoard } from "@/components/views/visit-board";
+
+export default function ViewsPage() {
+  return (
+    <main id="content" className="stack">
+      <h1>Operations views</h1>
+      <p>
+        Review the catalog table, move visit plans through preparation, and
+        read the operations chronology.
+      </p>
+      <TableView />
+      <VisitBoard />
+      <OperationsTimeline />
+    </main>
+  );
+}

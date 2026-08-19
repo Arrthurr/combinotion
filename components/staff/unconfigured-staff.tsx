@@ -1,6 +1,9 @@
 "use client";
 
 import { usePathname } from "next/navigation";
+import { OperationsTimeline } from "@/components/views/operations-timeline";
+import { TableView } from "@/components/views/table-view";
+import { VisitBoard } from "@/components/views/visit-board";
 import { VisitEditor } from "@/components/visits/visit-editor";
 
 export function UnconfiguredStaff() {
@@ -13,6 +16,13 @@ export function UnconfiguredStaff() {
         using the staff workspace.
       </p>
       {pathname.startsWith("/visits") ? <VisitEditor /> : null}
+      {pathname.startsWith("/views") ? (
+        <>
+          <TableView />
+          <VisitBoard />
+          <OperationsTimeline />
+        </>
+      ) : null}
     </main>
   );
 }

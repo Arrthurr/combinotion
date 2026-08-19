@@ -1,1 +1,15 @@
-export default async function TitlePage({params}:{params:Promise<{titleId:string}>}){const {titleId}=await params;return <main id="content" className="stack"><h1>Title workspace</h1><p className="muted">Title {titleId}</p><section className="card"><h2>Inventory</h2><p>On hand, reserved, availability, and an auditable movement history appear together.</p></section><section className="card"><h2>Requests and visits</h2><p>Reservations and school visit donations use the same canonical title record.</p></section></main>}
+import { TitleWorkspace } from "@/components/books/title-workspace";
+import type { Id } from "@/convex/_generated/dataModel";
+
+export default async function TitlePage({
+  params,
+}: {
+  params: Promise<{ titleId: string }>;
+}) {
+  const { titleId } = await params;
+  return (
+    <main id="content" className="stack">
+      <TitleWorkspace titleId={titleId as Id<"titles">} />
+    </main>
+  );
+}

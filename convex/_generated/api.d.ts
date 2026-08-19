@@ -9,6 +9,7 @@
  */
 
 import type * as intake from "../intake.js";
+import type * as integrations_openLibrary from "../integrations/openLibrary.js";
 import type * as inventory from "../inventory.js";
 import type * as lib_auth from "../lib/auth.js";
 import type * as lib_availability from "../lib/availability.js";
@@ -20,6 +21,7 @@ import type * as schools from "../schools.js";
 import type * as staff from "../staff.js";
 import type * as suppliers from "../suppliers.js";
 import type * as titles from "../titles.js";
+import type * as views from "../views.js";
 import type * as visits from "../visits.js";
 
 import type {
@@ -30,6 +32,7 @@ import type {
 
 declare const fullApi: ApiFromModules<{
   intake: typeof intake;
+  "integrations/openLibrary": typeof integrations_openLibrary;
   inventory: typeof inventory;
   "lib/auth": typeof lib_auth;
   "lib/availability": typeof lib_availability;
@@ -41,6 +44,7 @@ declare const fullApi: ApiFromModules<{
   staff: typeof staff;
   suppliers: typeof suppliers;
   titles: typeof titles;
+  views: typeof views;
   visits: typeof visits;
 }>;
 

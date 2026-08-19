@@ -1,5 +1,11 @@
 import { v } from "convex/values";
-import { internalMutation } from "./_generated/server";
+import { internalMutation, internalQuery } from "./_generated/server";
+import { requireStaff } from "./lib/auth";
+
+export const assertStaff = internalQuery({
+  args: {},
+  handler: async (ctx) => await requireStaff(ctx),
+});
 
 /** `npx convex run staff:seedStaff '{"clerkId":"<clerk subject>","email":"<email>"}'` */
 export const seedStaff = internalMutation({

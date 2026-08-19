@@ -117,6 +117,21 @@ describe("supplier orders", () => {
     ).toBe(true);
   });
 
+  it("records when an order transitions to ordered", async () => {
+    const { asStaff, orderId } = await createOrderTest();
+    const before = Date.now();
+    await asStaff.mutation(api.orders.markOrdered, {
+      orderId,
+      expectedAt: before + 86_400_000,
+    });
+    const after = Date.now();
+
+    const order = await asStaff.query(api.orders.getOrder, { orderId });
+    expect(order.status).toBe("ordered");
+    expect(order.orderedAt).toBeGreaterThanOrEqual(before);
+    expect(order.orderedAt).toBeLessThanOrEqual(after);
+  });
+
   it("treats the same cumulative receipt as a no-op", async () => {
     const { asStaff, firstTitleId, orderId } = await createOrderTest();
     const order = await asStaff.query(api.orders.getOrder, { orderId });
