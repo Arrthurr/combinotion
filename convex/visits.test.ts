@@ -13,6 +13,13 @@ async function createStaffTest() {
     clerkId: "staff_1",
     email: "coo@example.com",
   });
+  await t.run(async (ctx) => {
+    await ctx.db.insert("orgSettings", {
+      key: "org",
+      lowStockThreshold: 15,
+      publicRequests: { kind: "open" },
+    });
+  });
   return {
     t,
     asStaff: t.withIdentity({ subject: "staff_1" }),

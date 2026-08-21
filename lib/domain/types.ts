@@ -89,7 +89,7 @@ export type OrderLineQuantities = {
   receivedQuantity: number;
 };
 
-export type RequestStatus = "active" | "cancelled" | "declined";
+export type RequestStatus = "active" | "cancelled" | "declined" | "fulfilled";
 
 export type MatchStatus = "attached" | "unmatched" | "ambiguous";
 

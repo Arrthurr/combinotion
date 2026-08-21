@@ -60,6 +60,11 @@ describe("staff titles", () => {
   it("returns only the public requestable-title projection", async () => {
     const t = convexTest(schema, modules);
     await t.run(async (ctx) => {
+      await ctx.db.insert("orgSettings", {
+        key: "org",
+        lowStockThreshold: 15,
+        publicRequests: { kind: "open" },
+      });
       await ctx.db.insert("titles", {
         title: "Book",
         author: "Ann",
@@ -126,6 +131,10 @@ describe("staff titles", () => {
       titleId,
       quantity: 10,
       reason: "Physical count",
+    });
+    await asStaff.mutation(api.orgSettings.update, {
+      lowStockThreshold: 15,
+      publicRequests: { kind: "open" },
     });
     await t.mutation(internal.schoolRequests.internalSubmit, {
       schoolName: "Joy School",

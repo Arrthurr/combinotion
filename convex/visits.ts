@@ -251,6 +251,12 @@ export const saveVisit = mutation({
     },
   ) => {
     await requireStaff(ctx);
+    if (visitId !== undefined) {
+      const existingVisit = await ctx.db.get(visitId);
+      if (existingVisit?.origin === "notionImport") {
+        throw new Error("Imported visits are read-only");
+      }
+    }
     if (!(await ctx.db.get(schoolId))) {
       throw new Error("School not found");
     }
@@ -357,6 +363,84 @@ export const saveVisit = mutation({
   },
 });
 
+export const importHistoricalVisit = mutation({
+  args: {
+    importSourceId: v.string(),
+    schoolId: v.id("schools"),
+    occurredAt: v.number(),
+    followUp: v.optional(v.string()),
+    staffPersonIds: v.array(v.id("people")),
+    readerPersonIds: v.array(v.id("people")),
+    books: v.array(
+      v.object({
+        titleId: v.id("titles"),
+        donatedQuantity: v.number(),
+        readAloud: v.boolean(),
+      }),
+    ),
+  },
+  handler: async (ctx, args) => {
+    await requireStaff(ctx);
+    const existing = await ctx.db
+      .query("importRecords")
+      .withIndex("by_source", (q) => q.eq("sourceId", args.importSourceId))
+      .unique();
+    if (existing) {
+      return existing.recordId as Id<"visits">;
+    }
+    if (!(await ctx.db.get(args.schoolId))) {
+      throw new Error("School not found");
+    }
+    if (args.readerPersonIds.length === 0) {
+      throw new Error("Choose at least one reader");
+    }
+    if (args.books.length === 0) {
+      throw new Error("Add at least one book");
+    }
+    const visitId = await ctx.db.insert("visits", {
+      schoolId: args.schoolId,
+      occurredAt: args.occurredAt,
+      ...(args.followUp?.trim() ? { followUp: args.followUp.trim() } : {}),
+      effectGeneration: 1,
+      origin: "notionImport",
+    });
+    for (const personId of args.staffPersonIds) {
+      await ctx.db.insert("visitPeople", {
+        visitId,
+        personId,
+        kind: "staff",
+      });
+    }
+    for (const personId of args.readerPersonIds) {
+      await ctx.db.insert("visitPeople", {
+        visitId,
+        personId,
+        kind: "reader",
+      });
+    }
+    for (const book of args.books) {
+      if (!(await ctx.db.get(book.titleId))) {
+        throw new Error("Title not found");
+      }
+      await ctx.db.insert("visitBooks", {
+        visitId,
+        titleId: book.titleId,
+        donatedQuantity: book.donatedQuantity,
+        readAloud: book.readAloud,
+        consumptionStatus: "none",
+        consumedQuantity: 0,
+      });
+    }
+    await ctx.db.insert("importRecords", {
+      sourceId: args.importSourceId,
+      recordKind: "visit",
+      recordId: visitId,
+      importedAt: Date.now(),
+    });
+    return visitId;
+  },
+});
+
 export const deleteVisit = mutation({
   args: { visitId: v.id("visits") },
   handler: async (ctx, { visitId }) => {
@@ -364,6 +448,9 @@ export const deleteVisit = mutation({
     const visit = await ctx.db.get(visitId);
     if (!visit) {
       return null;
+    }
+    if (visit.origin === "notionImport") {
+      throw new Error("Imported visits are read-only");
     }
     const books = await ctx.db
       .query("visitBooks")

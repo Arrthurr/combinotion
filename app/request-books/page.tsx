@@ -9,10 +9,17 @@ export const dynamic = "force-dynamic";
 async function RequestableBooks() {
   const convexUrl = process.env.NEXT_PUBLIC_CONVEX_URL;
   let titles: RequestableTitle[] = [];
+  let holdMessage: string | undefined;
   if (convexUrl) {
     try {
       const client = new ConvexHttpClient(convexUrl);
-      titles = await client.query(api.titles.listRequestable, {});
+      const gate = await client.query(api.orgSettings.publicRequestGate, {});
+      if (gate.publicRequests.kind === "paused") {
+        holdMessage =
+          gate.publicRequests.message ?? "Public book requests are closed";
+      } else {
+        titles = await client.query(api.titles.listRequestable, {});
+      }
     } catch {
       titles = [];
     }
@@ -21,6 +28,7 @@ async function RequestableBooks() {
   return (
     <RequestableTitleList
       titles={titles}
+      holdMessage={holdMessage}
       allowUnconfiguredEntry={
         !convexUrl &&
         process.env.NEXT_PUBLIC_E2E_UNCONFIGURED_REQUESTS === "1"

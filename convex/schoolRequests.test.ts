@@ -12,6 +12,13 @@ async function createStaffTest() {
     clerkId: "staff_1",
     email: "coo@example.com",
   });
+  await t.run(async (ctx) => {
+    await ctx.db.insert("orgSettings", {
+      key: "org",
+      lowStockThreshold: 15,
+      publicRequests: { kind: "open" },
+    });
+  });
   return {
     t,
     asStaff: t.withIdentity({ subject: "staff_1" }),
@@ -67,6 +74,15 @@ function requestArgs({
 }
 
 describe("school requests", () => {
+  it("keeps the public list empty and rejects submit while requests are paused", async () => {
+    const t = convexTest(schema, modules);
+    await insertTitle(t);
+    expect(await t.query(api.titles.listRequestable, {})).toEqual([]);
+    await expect(
+      t.mutation(internal.schoolRequests.internalSubmit, requestArgs()),
+    ).rejects.toThrow("Public book requests are closed");
+  });
+
   it("reserves copies and restores availability when declined", async () => {
     const { t, asStaff } = await createStaffTest();
     const titleId = await insertTitle(t, { notes: "Private note" });
@@ -297,6 +313,13 @@ describe("school requests", () => {
   it("keeps submission internal and protects staff operations", async () => {
     const t = convexTest(schema, modules);
     expect("internalSubmit" in api.schoolRequests).toBe(false);
+    await t.run(async (ctx) => {
+      await ctx.db.insert("orgSettings", {
+        key: "org",
+        lowStockThreshold: 15,
+        publicRequests: { kind: "open" },
+      });
+    });
     await insertTitle(t);
     await t.mutation(
       internal.schoolRequests.internalSubmit,

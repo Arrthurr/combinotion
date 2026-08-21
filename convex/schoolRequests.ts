@@ -12,6 +12,8 @@ import { requireStaff } from "./lib/auth";
 import { positiveInteger, required } from "./lib/validation";
 import { matchSchool } from "../lib/domain/requests";
 import type { RequestStatus } from "../lib/domain/types";
+import { loadOrgSettings } from "./orgSettings";
+import { assertPublicRequestsOpen } from "../lib/domain/orgSettings";
 
 const referenceAlphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 
@@ -87,6 +89,7 @@ export const internalSubmit = internalMutation({
       idempotencyKey,
     },
   ) => {
+    assertPublicRequestsOpen(await loadOrgSettings(ctx));
     const cleanIdempotencyKey =
       idempotencyKey === undefined
         ? undefined

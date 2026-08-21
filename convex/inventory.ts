@@ -6,6 +6,8 @@ import {
   type MutationCtx,
 } from "./_generated/server";
 import { requireStaff } from "./lib/auth";
+import { loadOrgSettings } from "./orgSettings";
+import { orgThreshold } from "../lib/domain/orgSettings";
 import { positiveInteger, required } from "./lib/validation";
 import {
   applyMovement,
@@ -150,11 +152,12 @@ export const listReview = query({
   args: {},
   handler: async (ctx) => {
     await requireStaff(ctx);
+    const threshold = orgThreshold(await loadOrgSettings(ctx));
     const titles = await ctx.db.query("titles").collect();
     return titles
       .map((title) => ({
         ...title,
-        ...reviewState(title),
+        ...reviewState(title, threshold),
       }))
       .sort(
         (left, right) =>

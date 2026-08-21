@@ -9,12 +9,15 @@
  */
 
 import type * as intake from "../intake.js";
+import type * as integrations_googleSheets from "../integrations/googleSheets.js";
 import type * as integrations_openLibrary from "../integrations/openLibrary.js";
 import type * as inventory from "../inventory.js";
 import type * as lib_auth from "../lib/auth.js";
 import type * as lib_availability from "../lib/availability.js";
 import type * as lib_validation from "../lib/validation.js";
+import type * as migrations_notionImport from "../migrations/notionImport.js";
 import type * as orders from "../orders.js";
+import type * as orgSettings from "../orgSettings.js";
 import type * as people from "../people.js";
 import type * as reports from "../reports.js";
 import type * as reviews from "../reviews.js";
@@ -35,12 +38,15 @@ import type {
 
 declare const fullApi: ApiFromModules<{
   intake: typeof intake;
+  "integrations/googleSheets": typeof integrations_googleSheets;
   "integrations/openLibrary": typeof integrations_openLibrary;
   inventory: typeof inventory;
   "lib/auth": typeof lib_auth;
   "lib/availability": typeof lib_availability;
   "lib/validation": typeof lib_validation;
+  "migrations/notionImport": typeof migrations_notionImport;
   orders: typeof orders;
+  orgSettings: typeof orgSettings;
   people: typeof people;
   reports: typeof reports;
   reviews: typeof reviews;

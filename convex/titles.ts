@@ -9,6 +9,8 @@ import { availableToRequest } from "./lib/availability";
 import { requireStaff } from "./lib/auth";
 import { required } from "./lib/validation";
 import { reviewState } from "../lib/domain/inventory";
+import { isPublicRequestsOpen, orgThreshold } from "../lib/domain/orgSettings";
+import { loadOrgSettings } from "./orgSettings";
 import { outstandingQuantity } from "../lib/domain/orders";
 import type { OrderStatus } from "../lib/domain/types";
 import { titleParticipation } from "../lib/domain/visits";
@@ -319,7 +321,10 @@ export const getTitleWorkspace = query({
     const activeRequests = requestDetails.filter(
       (request): request is NonNullable<typeof request> => request !== null,
     );
-    const stockReview = reviewState(title);
+    const stockReview = reviewState(
+      title,
+      orgThreshold(await loadOrgSettings(ctx)),
+    );
 
     return {
       titleId,
@@ -382,6 +387,10 @@ export const getTitle = query({
 
 export const listRequestable = query({
   args: {},
-  handler: async (ctx) =>
-    projectRequestable(await ctx.db.query("titles").collect()),
+  handler: async (ctx) => {
+    if (!isPublicRequestsOpen(await loadOrgSettings(ctx))) {
+      return [];
+    }
+    return projectRequestable(await ctx.db.query("titles").collect());
+  },
 });

@@ -18,7 +18,7 @@ export default defineSchema({
         v.literal("reviewer"),
       ),
     ),
-  }),
+  }).index("by_email",["email"]),
   schools:defineTable({ name:v.string(), normalizedName:v.string(), address:v.string(), normalizedAddress:v.string() }).index("by_normalized",["normalizedName","normalizedAddress"]),
   schoolContacts:defineTable({ schoolId:v.id("schools"), personId:v.id("people") }).index("by_school",["schoolId"]).index("by_person",["personId"]),
   suppliers:defineTable({ name:v.string(), contact:v.optional(v.string()) }),
@@ -35,6 +35,7 @@ export default defineSchema({
       v.literal("active"),
       v.literal("cancelled"),
       v.literal("declined"),
+      v.literal("fulfilled"),
     ),
     matchStatus: v.union(
       v.literal("attached"),
@@ -56,11 +57,164 @@ export default defineSchema({
   })
     .index("by_title_active", ["titleId", "active"])
     .index("by_request", ["schoolRequestId"]),
-  visits:defineTable({ schoolId:v.id("schools"), occurredAt:v.number(), followUp:v.optional(v.string()), effectGeneration:v.number() }).index("by_school",["schoolId"]),
+  visits:defineTable({ schoolId:v.id("schools"), occurredAt:v.number(), followUp:v.optional(v.string()), effectGeneration:v.number(), origin:v.optional(v.literal("notionImport")) }).index("by_school",["schoolId"]).index("by_importSource",["origin"]),
   visitPlans:defineTable({ schoolId:v.id("schools"), stage:v.union(v.literal("readerConfirmation"),v.literal("schoolContact"),v.literal("securingBooks")), plannedFor:v.optional(v.number()), notes:v.optional(v.string()), resolution:v.optional(v.union(v.object({ kind:v.literal("visited"), visitId:v.id("visits") }),v.object({ kind:v.literal("archived") }))) }).index("by_school",["schoolId"]),
   viewConfigs:defineTable({ clerkId:v.string(), tableColumns:v.array(v.string()) }).index("by_clerkId",["clerkId"]),
   visitPeople:defineTable({ visitId:v.id("visits"), personId:v.id("people"), kind:v.union(v.literal("staff"),v.literal("reader")) }).index("by_visit",["visitId"]).index("by_person",["personId"]),
   visitBooks:defineTable({ visitId:v.id("visits"), titleId:v.id("titles"), donatedQuantity:v.number(), readAloud:v.boolean(), consumptionStatus:v.union(v.literal("consumed"),v.literal("none"),v.literal("ambiguous")), consumedReservationId:v.optional(v.id("reservations")), consumedQuantity:v.number() }).index("by_visit",["visitId"]),
   reviews:defineTable({ titleId:v.id("titles"), reviewer:v.string(), feedback:v.string(), score:v.number(), approved:v.boolean() }).index("by_title",["titleId"]),
-  pendingIntake:defineTable({ sourceId:v.string(), fingerprint:v.string(), payload:v.string(), status:v.string(), resolvedRecordId:v.optional(v.string()), receivedAt:v.number() }).index("by_source",["sourceId"])
+  orgSettings:defineTable({
+    key:v.literal("org"),
+    lowStockThreshold:v.number(),
+    publicRequests:v.union(
+      v.object({ kind:v.literal("open") }),
+      v.object({ kind:v.literal("paused"), message:v.optional(v.string()) }),
+    ),
+  }).index("by_key",["key"]),
+  intakeFeeds:defineTable(
+    v.union(
+      v.object({
+        kind:v.literal("bookReviews"),
+        spreadsheetId:v.string(),
+        tabName:v.string(),
+        mapping:v.object({
+          identityColumns:v.array(v.string()),
+          reviewerColumn:v.string(),
+          scoreColumn:v.string(),
+          feedbackColumn:v.string(),
+          isbnColumn:v.optional(v.string()),
+          titleTextColumn:v.optional(v.string()),
+        }),
+        state:v.union(
+          v.object({ kind:v.literal("disabled") }),
+          v.object({ kind:v.literal("enabled"), verifiedAt:v.number() }),
+        ),
+        lastPoll:v.optional(v.union(
+          v.object({ kind:v.literal("ok"), at:v.number(), rowsSeen:v.number(), newItems:v.number() }),
+          v.object({ kind:v.literal("failed"), at:v.number(), message:v.string() }),
+        )),
+      }),
+      v.object({
+        kind:v.literal("donationApplications"),
+        spreadsheetId:v.string(),
+        tabName:v.string(),
+        mapping:v.object({
+          identityColumns:v.array(v.string()),
+          nameColumn:v.string(),
+          emailColumn:v.optional(v.string()),
+          schoolNameColumn:v.optional(v.string()),
+          schoolAddressColumn:v.optional(v.string()),
+          messageColumn:v.optional(v.string()),
+        }),
+        state:v.union(
+          v.object({ kind:v.literal("disabled") }),
+          v.object({ kind:v.literal("enabled"), verifiedAt:v.number() }),
+        ),
+        lastPoll:v.optional(v.union(
+          v.object({ kind:v.literal("ok"), at:v.number(), rowsSeen:v.number(), newItems:v.number() }),
+          v.object({ kind:v.literal("failed"), at:v.number(), message:v.string() }),
+        )),
+      }),
+    ),
+  ).index("by_kind",["kind"]),
+  intakeItems:defineTable({
+    feedId:v.id("intakeFeeds"),
+    sourceId:v.string(),
+    fingerprint:v.string(),
+    receivedAt:v.number(),
+    rawValues:v.optional(v.string()),
+    state:v.union(
+      v.object({
+        kind:v.literal("pending"),
+        candidate:v.union(
+          v.object({
+            kind:v.literal("review"),
+            reviewer:v.string(),
+            score:v.number(),
+            feedback:v.string(),
+            isbn:v.optional(v.string()),
+            titleText:v.optional(v.string()),
+          }),
+          v.object({
+            kind:v.literal("donationApplication"),
+            name:v.string(),
+            email:v.optional(v.string()),
+            schoolName:v.optional(v.string()),
+            schoolAddress:v.optional(v.string()),
+            message:v.optional(v.string()),
+          }),
+        ),
+      }),
+      v.object({ kind:v.literal("invalid"), errors:v.array(v.string()) }),
+      v.object({
+        kind:v.literal("resolved"),
+        candidate:v.union(
+          v.object({
+            kind:v.literal("review"),
+            reviewer:v.string(),
+            score:v.number(),
+            feedback:v.string(),
+            isbn:v.optional(v.string()),
+            titleText:v.optional(v.string()),
+          }),
+          v.object({
+            kind:v.literal("donationApplication"),
+            name:v.string(),
+            email:v.optional(v.string()),
+            schoolName:v.optional(v.string()),
+            schoolAddress:v.optional(v.string()),
+            message:v.optional(v.string()),
+          }),
+        ),
+        resolution:v.union(
+          v.object({
+            kind:v.literal("autoApplied"),
+            record:v.object({
+              kind:v.union(
+                v.literal("person"),
+                v.literal("school"),
+                v.literal("title"),
+                v.literal("review"),
+              ),
+              id:v.string(),
+            }),
+          }),
+          v.object({
+            kind:v.literal("attached"),
+            record:v.object({
+              kind:v.union(
+                v.literal("person"),
+                v.literal("school"),
+                v.literal("title"),
+                v.literal("review"),
+              ),
+              id:v.string(),
+            }),
+          }),
+          v.object({
+            kind:v.literal("createdRecord"),
+            record:v.object({
+              kind:v.union(
+                v.literal("person"),
+                v.literal("school"),
+                v.literal("title"),
+                v.literal("review"),
+              ),
+              id:v.string(),
+            }),
+          }),
+          v.object({ kind:v.literal("dismissed"), reason:v.string() }),
+        ),
+        resolvedAt:v.number(),
+        sourceDrift:v.boolean(),
+      }),
+    ),
+  }).index("by_source",["sourceId"]).index("by_stateKind",["state.kind"]),
+  importRecords:defineTable({
+    sourceId:v.string(),
+    recordKind:v.string(),
+    recordId:v.string(),
+    importedAt:v.number(),
+  }).index("by_source",["sourceId"]),
 });
+

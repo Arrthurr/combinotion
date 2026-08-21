@@ -53,6 +53,9 @@ http.route({
       return json(result, 201);
     } catch (error) {
       const message = errorMessage(error);
+      if (message.includes("Public book requests are closed")) {
+        return json({ error: message }, 503);
+      }
       if (message.includes("Those copies are no longer available")) {
         return json(
           { error: "Those copies are no longer available" },
