@@ -1,6 +1,6 @@
 /// <reference types="vite/client" />
 import { convexTest } from "convex-test";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { api, internal } from "./_generated/api";
 import schema from "./schema";
 
@@ -74,6 +74,10 @@ function requestArgs({
 }
 
 describe("school requests", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
   it("keeps the public list empty and rejects submit while requests are paused", async () => {
     const t = convexTest(schema, modules);
     await insertTitle(t);
@@ -355,6 +359,35 @@ describe("school requests", () => {
     expect(response.status).toBe(403);
     expect(await response.json()).toEqual({
       error: "Request service unavailable",
+    });
+  });
+
+  it("returns 503 with the hold message when public requests are paused", async () => {
+    vi.stubEnv("SCHOOL_REQUEST_SHARED_SECRET", "secret");
+    const t = convexTest(schema, modules);
+    await t.run(async (ctx) => {
+      await ctx.db.insert("orgSettings", {
+        key: "org",
+        lowStockThreshold: 15,
+        publicRequests: {
+          kind: "paused",
+          message: "Hold until the count is done",
+        },
+      });
+    });
+    await insertTitle(t);
+    const response = await t.fetch("/school-requests", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-school-request-secret": "secret",
+      },
+      body: JSON.stringify(requestArgs()),
+    });
+
+    expect(response.status).toBe(503);
+    expect(await response.json()).toEqual({
+      error: "Hold until the count is done",
     });
   });
 

@@ -155,7 +155,8 @@ export async function POST(request: Request) {
     if (
       (response.status === 400 ||
         response.status === 403 ||
-        response.status === 409) &&
+        response.status === 409 ||
+        response.status === 503) &&
       "error" in payload.data
     ) {
       return NextResponse.json(

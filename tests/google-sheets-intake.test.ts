@@ -287,6 +287,27 @@ describe("Google Sheets intake", () => {
     ).toBe("Google credentials are missing");
   });
 
+  it("does not collide blank identity rows onto one source id", () => {
+    const first = parseRow(reviewFeed, reviewHeaders, [
+      "",
+      "",
+      "Pat",
+      "4",
+      "Loved it",
+      "9780000000001",
+    ]);
+    const second = parseRow(reviewFeed, reviewHeaders, [
+      "",
+      "",
+      "Ada",
+      "5",
+      "Also good",
+      "9780000000002",
+    ]);
+    expect(first.sourceId).not.toBe(second.sourceId);
+    expect(() => assertUniqueSourceIds([first, second])).not.toThrow();
+  });
+
   it("rejects two rows that share a source key", () => {
     const first = parseRow(reviewFeed, reviewHeaders, [
       "2026-08-01",

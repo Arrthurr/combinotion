@@ -9,7 +9,7 @@ import {
   type ImportRow,
 } from "../../lib/domain/notionImport";
 import { normalizeSchool } from "../../lib/domain/requests";
-import { appendInventoryMovement } from "../inventory";
+import { appendInventoryMovement, writeOpeningBalance } from "../inventory";
 
 async function importedId(ctx: MutationCtx, sourceId: string) {
   const existing = await ctx.db
@@ -219,12 +219,10 @@ async function applyRows(
           if (!titleDoc) {
             throw new Error(`Title not found for opening balance ${row.isbn}`);
           }
-          await appendInventoryMovement(ctx, {
+          await writeOpeningBalance(ctx, {
             titleId: titleDoc._id,
-            kind: "openingBalance",
             quantity: row.quantity,
             reason: row.reason,
-            sourceId: `openingBalance:${titleDoc._id}`,
           });
           await remember(ctx, sourceId, "title", titleDoc._id);
           break;

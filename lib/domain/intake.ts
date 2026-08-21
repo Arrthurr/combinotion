@@ -134,9 +134,13 @@ function rowKey(headers: string[], cells: string[], identityColumns: string[]) {
   if (identityColumns.length === 0) {
     return "";
   }
-  return identityColumns
-    .map((column) => cell(headers, cells, column) ?? "")
-    .join("|");
+  const parts = identityColumns.map(
+    (column) => cell(headers, cells, column) ?? "",
+  );
+  if (parts.every((part) => part === "")) {
+    return "";
+  }
+  return parts.join("|");
 }
 
 function parsedState(

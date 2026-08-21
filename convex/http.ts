@@ -1,7 +1,11 @@
 import { httpRouter } from "convex/server";
 import { z } from "zod";
 import { httpAction } from "./_generated/server";
-import { internal } from "./_generated/api";
+import { api, internal } from "./_generated/api";
+import {
+  publicRequestsHoldMessage,
+  type PublicRequests,
+} from "../lib/domain/orgSettings";
 
 const requestSchema = z.object({
   schoolName: z.string().min(2),
@@ -30,6 +34,11 @@ function errorMessage(error: unknown) {
   return error instanceof Error ? error.message : "Invalid request";
 }
 
+function closedResponse(publicRequests: PublicRequests) {
+  const hold = publicRequestsHoldMessage(publicRequests);
+  return hold === undefined ? null : json({ error: hold }, 503);
+}
+
 const http = httpRouter();
 
 http.route({
@@ -45,6 +54,11 @@ http.route({
     }
 
     try {
+      const gate = await ctx.runQuery(api.orgSettings.publicRequestGate, {});
+      const closed = closedResponse(gate.publicRequests);
+      if (closed) {
+        return closed;
+      }
       const body = requestSchema.parse(await request.json());
       const result = await ctx.runMutation(
         internal.schoolRequests.internalSubmit,
@@ -52,10 +66,12 @@ http.route({
       );
       return json(result, 201);
     } catch (error) {
-      const message = errorMessage(error);
-      if (message.includes("Public book requests are closed")) {
-        return json({ error: message }, 503);
+      const gate = await ctx.runQuery(api.orgSettings.publicRequestGate, {});
+      const closed = closedResponse(gate.publicRequests);
+      if (closed) {
+        return closed;
       }
+      const message = errorMessage(error);
       if (message.includes("Those copies are no longer available")) {
         return json(
           { error: "Those copies are no longer available" },

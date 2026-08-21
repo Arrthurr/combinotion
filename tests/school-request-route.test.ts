@@ -66,6 +66,36 @@ describe("school request route", () => {
     });
   });
 
+  it("forwards a Convex 503 closed-request message", async () => {
+    vi.stubEnv(
+      "NEXT_PUBLIC_CONVEX_SITE_URL",
+      "https://example.convex.site",
+    );
+    vi.stubEnv("SCHOOL_REQUEST_SHARED_SECRET", "server-secret");
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({ error: "Hold until the count is done" }),
+        {
+          status: 503,
+          headers: { "content-type": "application/json" },
+        },
+      ),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const response = await POST(
+      request({
+        ...contact,
+        lines: [{ isbn: "1", quantity: 2 }],
+      }),
+    );
+
+    expect(response.status).toBe(503);
+    expect(await response.json()).toEqual({
+      error: "Hold until the count is done",
+    });
+  });
+
   it("adds the shared secret only when forwarding to Convex", async () => {
     vi.stubEnv(
       "NEXT_PUBLIC_CONVEX_SITE_URL",

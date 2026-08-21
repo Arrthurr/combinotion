@@ -211,6 +211,46 @@ export const correctOnHand = mutation({
   },
 });
 
+export async function writeOpeningBalance(
+  ctx: MutationCtx,
+  input: {
+    titleId: Id<"titles">;
+    quantity: number;
+    reason: string;
+  },
+) {
+  const cleanReason = required(input.reason, "Reason");
+  positiveInteger(input.quantity);
+  const sourceId = `openingBalance:${input.titleId}`;
+  const existing = await ctx.db
+    .query("inventoryMovements")
+    .withIndex("by_source", (q) => q.eq("sourceId", sourceId))
+    .unique();
+  if (existing) {
+    return existing.titleId;
+  }
+  const title = await ctx.db.get(input.titleId);
+  if (!title) {
+    throw new Error("Title not found");
+  }
+  const priorMovement = await ctx.db
+    .query("inventoryMovements")
+    .withIndex("by_title", (q) => q.eq("titleId", input.titleId))
+    .first();
+  if (title.quantityOnHand !== 0 || priorMovement) {
+    throw new Error(
+      "Opening balance can only be recorded when on-hand is zero and the title has no movements",
+    );
+  }
+  return await appendInventoryMovement(ctx, {
+    titleId: input.titleId,
+    kind: "openingBalance",
+    quantity: input.quantity,
+    reason: cleanReason,
+    sourceId,
+  });
+}
+
 export const recordOpeningBalance = mutation({
   args: {
     titleId: v.id("titles"),
@@ -219,36 +259,7 @@ export const recordOpeningBalance = mutation({
   },
   handler: async (ctx, { titleId, quantity, reason }) => {
     await requireStaff(ctx);
-    const cleanReason = required(reason, "Reason");
-    positiveInteger(quantity);
-    const sourceId = `openingBalance:${titleId}`;
-    const existing = await ctx.db
-      .query("inventoryMovements")
-      .withIndex("by_source", (q) => q.eq("sourceId", sourceId))
-      .unique();
-    if (existing) {
-      return existing.titleId;
-    }
-    const title = await ctx.db.get(titleId);
-    if (!title) {
-      throw new Error("Title not found");
-    }
-    const priorMovement = await ctx.db
-      .query("inventoryMovements")
-      .withIndex("by_title", (q) => q.eq("titleId", titleId))
-      .first();
-    if (title.quantityOnHand !== 0 || priorMovement) {
-      throw new Error(
-        "Opening balance can only be recorded when on-hand is zero and the title has no movements",
-      );
-    }
-    return await appendInventoryMovement(ctx, {
-      titleId,
-      kind: "openingBalance",
-      quantity,
-      reason: cleanReason,
-      sourceId,
-    });
+    return await writeOpeningBalance(ctx, { titleId, quantity, reason });
   },
 });
 

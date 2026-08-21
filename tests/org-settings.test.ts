@@ -3,6 +3,7 @@ import {
   assertPublicRequestsOpen,
   defaultOrgSettings,
   isPublicRequestsOpen,
+  publicRequestsHoldMessage,
 } from "@/lib/domain/orgSettings";
 
 describe("org settings", () => {
@@ -12,5 +13,24 @@ describe("org settings", () => {
     expect(() => assertPublicRequestsOpen(null)).toThrow(
       "Public book requests are closed",
     );
+  });
+
+  it("uses a custom hold message when requests are paused", () => {
+    expect(
+      publicRequestsHoldMessage({
+        kind: "paused",
+        message: "Hold until the count is done",
+      }),
+    ).toBe("Hold until the count is done");
+    expect(() =>
+      assertPublicRequestsOpen({
+        lowStockThreshold: 15,
+        publicRequests: {
+          kind: "paused",
+          message: "Hold until the count is done",
+        },
+      }),
+    ).toThrow("Hold until the count is done");
+    expect(publicRequestsHoldMessage({ kind: "open" })).toBeUndefined();
   });
 });

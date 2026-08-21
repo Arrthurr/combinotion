@@ -142,4 +142,29 @@ describe("Notion import", () => {
       }),
     ).rejects.toThrow("Imported visits are read-only");
   });
+
+  it("does not add an opening balance after a live stock movement", async () => {
+    const { t, asStaff } = await createStaffTest();
+    const historyRows = rows.filter((row) => row.kind !== "openingBalance");
+    await asStaff.mutation(api.migrations.notionImport.apply, {
+      rows: historyRows,
+      expectedDigest: dryRunImport(historyRows).digest,
+    });
+    const titles = await asStaff.query(api.titles.listTitles, {});
+    await asStaff.mutation(api.inventory.correctOnHand, {
+      titleId: titles[0]!._id,
+      quantityOnHand: 3,
+      reason: "Shelf count",
+    });
+
+    await expect(
+      asStaff.mutation(api.migrations.notionImport.apply, {
+        rows,
+        expectedDigest: dryRunImport(rows).digest,
+      }),
+    ).rejects.toThrow("no movements");
+
+    const again = await asStaff.query(api.titles.listTitles, {});
+    expect(again[0]?.quantityOnHand).toBe(3);
+  });
 });

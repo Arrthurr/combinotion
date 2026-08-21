@@ -16,12 +16,26 @@ export function defaultOrgSettings(): OrgSettings {
   };
 }
 
+export function publicRequestsHoldMessage(publicRequests: PublicRequests) {
+  switch (publicRequests.kind) {
+    case "open":
+      return undefined;
+    case "paused":
+      return publicRequests.message ?? "Public book requests are closed";
+    default: {
+      const unhandled: never = publicRequests;
+      throw new Error(
+        `Unhandled public request state: ${JSON.stringify(unhandled)}`,
+      );
+    }
+  }
+}
+
 export function assertPublicRequestsOpen(settings: OrgSettings | null) {
   const current = settings ?? defaultOrgSettings();
-  if (current.publicRequests.kind === "paused") {
-    throw new Error(
-      current.publicRequests.message ?? "Public book requests are closed",
-    );
+  const message = publicRequestsHoldMessage(current.publicRequests);
+  if (message !== undefined) {
+    throw new Error(message);
   }
 }
 

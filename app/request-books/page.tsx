@@ -3,6 +3,7 @@ import { Suspense } from "react";
 import { api } from "@/convex/_generated/api";
 import { RequestableTitleList } from "@/components/requests/requestable-title-list";
 import type { RequestableTitle } from "@/convex/titles";
+import { publicRequestsHoldMessage } from "@/lib/domain/orgSettings";
 
 export const dynamic = "force-dynamic";
 
@@ -14,10 +15,8 @@ async function RequestableBooks() {
     try {
       const client = new ConvexHttpClient(convexUrl);
       const gate = await client.query(api.orgSettings.publicRequestGate, {});
-      if (gate.publicRequests.kind === "paused") {
-        holdMessage =
-          gate.publicRequests.message ?? "Public book requests are closed";
-      } else {
+      holdMessage = publicRequestsHoldMessage(gate.publicRequests);
+      if (holdMessage === undefined) {
         titles = await client.query(api.titles.listRequestable, {});
       }
     } catch {
