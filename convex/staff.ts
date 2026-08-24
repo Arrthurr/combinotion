@@ -16,3 +16,17 @@ export const seedStaff = internalMutation({
     return await ctx.db.insert("staff", { clerkId, email });
   },
 });
+
+/** `npx convex run staff:removeStaff '{"clerkId":"<clerk subject>"}'` */
+export const removeStaff = internalMutation({
+  args: { clerkId: v.string() },
+  handler: async (ctx, { clerkId }) => {
+    const existing = await ctx.db
+      .query("staff")
+      .withIndex("by_clerkId", (q) => q.eq("clerkId", clerkId))
+      .unique();
+    if (!existing) return null;
+    await ctx.db.delete(existing._id);
+    return existing._id;
+  },
+});

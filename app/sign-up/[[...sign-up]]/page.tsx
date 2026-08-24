@@ -11,7 +11,7 @@ export default function SignUpPage() {
 
   return (
     <main id="content" className="stack">
-      <SignUp />
+      <SignUp fallbackRedirectUrl="/books" />
     </main>
   );
 }

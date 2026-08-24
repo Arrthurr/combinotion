@@ -11,7 +11,7 @@ export default function SignInPage() {
 
   return (
     <main id="content" className="stack">
-      <SignIn />
+      <SignIn fallbackRedirectUrl="/books" />
     </main>
   );
 }

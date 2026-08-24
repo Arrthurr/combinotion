@@ -8,6 +8,8 @@
  * @module
  */
 
+import type * as crons from "../crons.js";
+import type * as http from "../http.js";
 import type * as intake from "../intake.js";
 import type * as integrations_googleSheets from "../integrations/googleSheets.js";
 import type * as integrations_openLibrary from "../integrations/openLibrary.js";
@@ -15,6 +17,7 @@ import type * as inventory from "../inventory.js";
 import type * as lib_auth from "../lib/auth.js";
 import type * as lib_availability from "../lib/availability.js";
 import type * as lib_validation from "../lib/validation.js";
+import type * as migrations_clearLegacyCrmTables from "../migrations/clearLegacyCrmTables.js";
 import type * as migrations_notionImport from "../migrations/notionImport.js";
 import type * as orders from "../orders.js";
 import type * as orgSettings from "../orgSettings.js";
@@ -37,6 +40,8 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
+  crons: typeof crons;
+  http: typeof http;
   intake: typeof intake;
   "integrations/googleSheets": typeof integrations_googleSheets;
   "integrations/openLibrary": typeof integrations_openLibrary;
@@ -44,6 +49,7 @@ declare const fullApi: ApiFromModules<{
   "lib/auth": typeof lib_auth;
   "lib/availability": typeof lib_availability;
   "lib/validation": typeof lib_validation;
+  "migrations/clearLegacyCrmTables": typeof migrations_clearLegacyCrmTables;
   "migrations/notionImport": typeof migrations_notionImport;
   orders: typeof orders;
   orgSettings: typeof orgSettings;
