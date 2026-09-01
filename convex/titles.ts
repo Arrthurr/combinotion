@@ -377,14 +377,6 @@ export const listTitles = query({
   },
 });
 
-export const getTitle = query({
-  args: { titleId: v.id("titles") },
-  handler: async (ctx, { titleId }) => {
-    await requireStaff(ctx);
-    return await ctx.db.get(titleId);
-  },
-});
-
 export const listRequestable = query({
   args: {},
   handler: async (ctx) => {

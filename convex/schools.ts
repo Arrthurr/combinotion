@@ -41,14 +41,6 @@ export const listSchools = query({
   },
 });
 
-export const getSchool = query({
-  args: { schoolId: v.id("schools") },
-  handler: async (ctx, { schoolId }) => {
-    await requireStaff(ctx);
-    return await ctx.db.get(schoolId);
-  },
-});
-
 export const addContact = mutation({
   args: {
     schoolId: v.id("schools"),

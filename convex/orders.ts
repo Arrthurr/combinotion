@@ -105,44 +105,6 @@ export const createOrder = mutation({
   },
 });
 
-export const addOrderLine = mutation({
-  args: {
-    orderId: v.id("orders"),
-    titleId: v.id("titles"),
-    orderedQuantity: v.number(),
-  },
-  handler: async (ctx, { orderId, titleId, orderedQuantity }) => {
-    await requireStaff(ctx);
-    positiveInteger(orderedQuantity, "Ordered quantity");
-    const order = await ctx.db.get(orderId);
-    if (!order) {
-      throw new Error("Order not found");
-    }
-    if (order.status === "received") {
-      throw new Error("Lines cannot be added to a received order");
-    }
-    const title = await ctx.db.get(titleId);
-    if (!title) {
-      throw new Error("Title not found");
-    }
-    const lines = await ctx.db
-      .query("orderLines")
-      .withIndex("by_order", (q) => q.eq("orderId", orderId))
-      .collect();
-    if (lines.some((line) => line.titleId === titleId)) {
-      throw new Error("A title can appear only once on an order");
-    }
-    const lineId = await ctx.db.insert("orderLines", {
-      orderId,
-      titleId,
-      orderedQuantity,
-      receivedQuantity: 0,
-    });
-    await ctx.db.patch(titleId, { reorderNeeded: false });
-    return lineId;
-  },
-});
-
 export const markOrdered = mutation({
   args: {
     orderId: v.id("orders"),

@@ -1,0 +1,20 @@
+ts	phase	decision	why	evidence	result
+2026-08-25T01:41:11Z	frame	done when both feeds are enabled with last-poll not failed and at least one item from each feed is on /intake while public requests stay paused	production ops configuration, reversible by disable, no code change	.audit/sheets-intake-prod.tsv	predicate set
+2026-08-25T01:41:11Z	design	skip architect and arena	shape is already concrete in Settings and schema	components/settings/operations-settings.tsx	skipped
+2026-08-25T01:41:11Z	design	map Form Responses 1 on both spreadsheets using exact headers	SA Sheets API already reads both tabs	spreadsheet tabs Form Responses 1	grant readable
+2026-08-25T01:43:38Z	grant	service account can read both Form Responses 1 tabs	Sheets API 200 as j4b-donation-connector, Drive folder left unshared	spreadsheets Form Responses 1	VERIFIED
+2026-08-25T01:43:38Z	gate	public requests already paused	orgSettings empty so default paused, publicRequestGate confirms	orgSettings:publicRequestGate	paused
+2026-08-25T01:44:01Z	review-save	saved bookReviews mapping on Form Responses 1, left disabled	identity is Timestamp + Your name + Book Title, score is Story Engagement, feedback is the always-filled notes header including its newline	intake:saveFeedConfig ms7eay755m8zwhegbmn9arz0nh8d5d1a	disabled configured
+2026-08-25T01:44:01Z	review-enable	verifyAndEnableFeed succeeded for bookReviews	headers matched including newline notes column	intake:verifyAndEnableFeed kind enabled	VERIFIED
+2026-08-25T01:44:20Z	donation-save	saved donationApplications mapping on Form Responses 1, left disabled	identity Timestamp + email, name/email/school/city/use-of-books including trailing space on the use column	intake:saveFeedConfig ms74tby7amr0qbw1m7bpywq73d8d4x6j	disabled configured
+2026-08-25T01:44:20Z	donation-enable	verifyAndEnableFeed succeeded for donationApplications	headers matched	intake:verifyAndEnableFeed kind enabled	VERIFIED
+2026-08-25T01:48:25Z	poll	polled both enabled feeds	used existing Form Responses 1 rows instead of submitting a public form	intake:pollFeeds lastPoll ok 102 and 91	VERIFIED
+2026-08-25T01:48:25Z	intake	incoming forms has 102 pending reviews and 91 pending donations, 0 invalid, 0 resolved	listItems is the same query /intake uses; no raw payloads printed	intake:listItems pending=193	VERIFIED
+2026-08-25T01:48:25Z	public	left public requests paused	publicRequestGate and /request-books both say closed	.audit/request-books.png	VERIFIED
+2026-08-25T01:48:25Z	ui	could not sign in to Settings or Incoming forms in the browser	Clerk email code went to hola@arturosolo.com, connected Gmail is a different inbox, live Clerk secret is redacted in Vercel pull	ops.joyforbooks.org/sign-in	INCONCLUSIVE
+2026-08-25T01:48:59Z	mapping	book review score is Story Engagement, feedback is the always-filled notes header, title is Book Title, no ISBN column	the form is a rubric, not Score/Review/ISBN, and only Story Engagement is numeric across 1-4 for every row	Form Responses 1 headers	chosen
+2026-08-25T01:48:59Z	mapping	donation name/email/school/city/use-of-books, identity Timestamp plus email	no street-address column exists; city is the closest optional address field	Form Responses 1 headers	chosen
+2026-08-25T01:48:59Z	replay	a later health read showed lastPoll ok with newItems 0 and the same rowsSeen	fingerprint skip, feeds stayed enabled	intake:listHealth	idempotent
+2026-08-25T01:53:32Z	cron	pollFeeds is deployed on production; interval lives in convex/crons.ts at 15 minutes	function-spec --prod lists intake.js:pollFeeds; did not dump the cron scheduler table	convex/crons.ts plus function-spec pollFeeds	INCONCLUSIVE on next tick
+2026-08-25T01:53:32Z	bulk	poll imported the full Form Responses history, 193 pending rows	poll always reads the mapped tab; using existing rows meant the whole sheet, not one test row	intake:listItems pending=193	accepted
+2026-08-25T20:13:47Z	ui	signed in via Hey Clerk email code and opened Settings plus Incoming forms	Hey account hola@arturosolo.com, Settings last poll 102/0 and 92/1, queue 102 reviews and 92 donations polling	.audit/settings-live.png	VERIFIED

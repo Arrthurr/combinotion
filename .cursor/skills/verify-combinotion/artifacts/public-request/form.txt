@@ -1,0 +1,17 @@
+heading: Request books
+status: No titles are available to request right now.
+For schools
+
+Request books
+
+Choose titles that are currently available. Submitting this form reserves copies. It does not change fundraising-store inventory.
+
+Available titles
+School name
+School address
+Contact name
+Email
+Leave blank
+Reserve requested copies
+
+No titles are available to request right now.

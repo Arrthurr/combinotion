@@ -39,15 +39,14 @@ describe("people", () => {
       roles: ["reader", "board"],
     });
 
-    await expect(
-      asStaff.query(api.people.getPerson, { personId }),
-    ).resolves.toEqual(
+    await expect(asStaff.query(api.people.listPeople, {})).resolves.toEqual([
       expect.objectContaining({
+        _id: personId,
         name: "Pat Reader",
         email: "pat@example.com",
         roles: ["reader", "board"],
       }),
-    );
+    ]);
   });
 
   it("rejects empty and duplicate role lists", async () => {

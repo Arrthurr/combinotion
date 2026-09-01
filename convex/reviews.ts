@@ -46,38 +46,6 @@ export const list = query({
   },
 });
 
-export const createReview = mutation({
-  args: {
-    titleId: v.id("titles"),
-    reviewer: v.string(),
-    feedback: v.string(),
-    score: v.number(),
-    approved: v.optional(v.boolean()),
-  },
-  handler: async (ctx, args) => {
-    await requireStaff(ctx);
-    if (!(await ctx.db.get(args.titleId))) {
-      throw new Error("Title not found");
-    }
-    if (!args.reviewer.trim()) {
-      throw new Error("Reviewer is required");
-    }
-    if (!args.feedback.trim()) {
-      throw new Error("Feedback is required");
-    }
-    if (!Number.isFinite(args.score)) {
-      throw new Error("Score must be a number");
-    }
-    return await ctx.db.insert("reviews", {
-      titleId: args.titleId,
-      reviewer: args.reviewer.trim(),
-      feedback: args.feedback.trim(),
-      score: args.score,
-      approved: args.approved ?? false,
-    });
-  },
-});
-
 export const setApproved = mutation({
   args: {
     reviewId: v.id("reviews"),

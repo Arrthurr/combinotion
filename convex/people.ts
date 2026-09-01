@@ -50,14 +50,6 @@ export const listPeople = query({
   },
 });
 
-export const getPerson = query({
-  args: { personId: v.id("people") },
-  handler: async (ctx, { personId }) => {
-    await requireStaff(ctx);
-    return await ctx.db.get(personId);
-  },
-});
-
 export const setRoles = mutation({
   args: {
     personId: v.id("people"),

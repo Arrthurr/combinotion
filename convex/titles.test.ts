@@ -21,7 +21,7 @@ describe("staff titles", () => {
     ).rejects.toThrow("Staff membership required");
   });
 
-  it("rejects signed-in non-staff listTitles and getTitle", async () => {
+  it("rejects signed-in non-staff listTitles and getTitleWorkspace", async () => {
     const t = convexTest(schema, modules);
     const titleId = await t.run(async (ctx) =>
       ctx.db.insert("titles", {
@@ -35,7 +35,7 @@ describe("staff titles", () => {
     );
     const asUser = t.withIdentity({ subject: "user_1" });
     await expect(asUser.query(api.titles.listTitles, {})).rejects.toThrow("Staff membership required");
-    await expect(asUser.query(api.titles.getTitle, { titleId })).rejects.toThrow("Staff membership required");
+    await expect(asUser.query(api.titles.getTitleWorkspace, { titleId })).rejects.toThrow("Staff membership required");
   });
 
   it("lets staff create a title and list it", async () => {
