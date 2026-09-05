@@ -5,7 +5,7 @@ Staff review the catalog table, visit board, and operations timeline at `/views`
 ## Sub-features
 
 - `views-private` hides `Operations views` and staff navigation when signed out with Clerk configured.
-- `views-unconfigured` shows headings `Table`, `Visit board`, and `Timeline`.
+- `views-unconfigured` shows heading `Staff authentication is not configured` plus headings `Table`, `Visit board`, and `Timeline`.
 
 ## How to get to it (user POV)
 
