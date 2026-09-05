@@ -36,7 +36,7 @@ npm run lint
 
 ## Import Notion data
 
-Notion import is shaped JSON plus a counts CSV. It does not call the Notion API.
+Notion import is shaped JSON plus a counts CSV. The app does not call the Notion API. Produce `notion.json` through Cursor connected to Notion, then dry-run, as described in the [launch and maintenance guide](docs/operations/launch-and-maintenance.md).
 
 ```
 npx tsx scripts/import-notion.ts --export notion.json --counts counts.csv
