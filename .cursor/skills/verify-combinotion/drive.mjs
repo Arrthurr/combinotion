@@ -97,7 +97,9 @@ async function drivePublicRequest(page, baseUrl) {
   await page.getByLabel("Title ISBN").fill("9780000000001");
   await page.getByLabel("Copies").fill("2");
   await page.getByRole("button", { name: "Reserve requested copies" }).click();
-  const success = await page.getByRole("status").innerText();
+  const successStatus = page.getByRole("status");
+  await successStatus.filter({ hasText: "Request received: JFB-TEST1234" }).waitFor();
+  const success = await successStatus.innerText();
   if (!success.includes("Request received: JFB-TEST1234") || !submitted) {
     throw new Error(`Submit did not show mocked reference: ${success}`);
   }
