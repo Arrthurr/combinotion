@@ -1,7 +1,9 @@
 {
   "framework": "nextjs",
   "regions": ["iad1"],
-  "installCommand": "npm ci",
-  "buildCommand": "npm run build",
-  "ignoreCommand": "exit 1"
+  "git": {
+    "deploymentEnabled": {
+      "cursor/*": false
+    }
+  }
 }
