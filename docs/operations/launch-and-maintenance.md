@@ -23,7 +23,7 @@ Rotate the service account key when someone leaves or a sheet is unshared. Revok
 
 ## Notion import
 
-Notion is a read-only archive after cutover. Nothing writes back. The app does not call the Notion API. Cursor reads Notion, writes the import files, then the local script dry-runs and applies them.
+Notion is a read-only archive after cutover. Nothing writes back. The app does not call the Notion API. Cursor reads Notion into a dump, `export-notion.ts` maps that dump to `notion.json`, then the local script dry-runs and applies it.
 
 ### Produce the export
 
@@ -32,11 +32,18 @@ Notion is a read-only archive after cutover. Nothing writes back. The app does n
    - Omit the row. It stays in Notion only.
    - `historicalContext` with `fulfilled`, `cancelled`, or `declined`. History only. No reservations. No stock movement.
    - `verifiedActive` with `{ isbn, quantity }` lines. This becomes a live reservation and is the only import path that changes availability.
-   A request with no disposition becomes fulfilled history. Do not let the agent invent `verifiedActive` lines.
-3. Ask Cursor to pull the people, schools, titles, requests, visits, and reviews you still need, and to write `notion.json` as `{ "rows": [ ... ] }` using the import kinds in `lib/domain/notionImport.ts`. Use Notion page ids for `notionId`, `schoolNotionId`, `staffNotionIds`, and `readerNotionIds`. Use the printed ISBN for every title, review, visit book, and active request line. Those ISBN strings must match exactly. Put people, schools, and titles before the visits and requests that reference them. Relation lists on a page stop at 25 until you paginate the property. Prefer page ids over SQL query dumps. SQL mode can drop link targets.
-4. Export the launch-day physical count yourself as `counts.csv` with `isbn,quantity` columns. That file comes from the shelf, not from Notion.
+   A request with no disposition becomes fulfilled history. Do not let the agent invent `verifiedActive` lines. `export-notion.ts` emits `historicalContext` only. Add `verifiedActive` lines by hand after the map if a request must still reserve stock.
+3. Ask Cursor to pull the people, schools, titles, requests, visits, and reviews you still need into `dump.json` as `{ people, organizations, titles, requests, reviews, visits }`. Prefer page ids over SQL query dumps. SQL mode can drop link targets. Relation lists on a page stop at 25 until you paginate the property.
+4. Map the dump.
 
-Treat the agent's `notion.json` as untrusted until the dry-run and a spot-check pass. Notion MCP returns whatever the connected account can see, including emails. Do not paste that dump into chat, tickets, or recap emails.
+```
+npx tsx scripts/export-notion.ts --dump dump.json --out notion.json
+```
+
+The mapper writes `{ "rows": [ ... ] }` using the import kinds in `lib/domain/notionImport.ts`. It uses Notion page ids for `notionId`, `schoolNotionId`, `staffNotionIds`, and `readerNotionIds`, and the printed ISBN for every title, review, and visit book. Those ISBN strings must match exactly. People, schools, and titles come before the visits and requests that reference them. Omitted schools lack any city/state, visit street, or request city. Omitted visits lack a resolvable title.
+5. Export the launch-day physical count yourself as `counts.csv` with `isbn,quantity` columns. That file comes from the shelf, not from Notion.
+
+Treat the mapped `notion.json` as untrusted until the dry-run and a spot-check pass. Notion MCP returns whatever the connected account can see, including emails. Do not paste that dump into chat, tickets, or recap emails.
 
 ### Dry-run, then apply
 
