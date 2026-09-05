@@ -255,8 +255,9 @@ export function exportTitles(rows: NotionDumpRow[]): ImportRow[] {
   return uniqueByNotionId(
     rows.flatMap((row) => {
       const title = text(row.Name);
+      const author = text(row.Author);
       const isbn = isbnOf(row["Hardcover ISBN"]);
-      if (!title || !isbn) {
+      if (!title || !author || !isbn) {
         return [];
       }
       return [
@@ -264,7 +265,7 @@ export function exportTitles(rows: NotionDumpRow[]): ImportRow[] {
           kind: "title" as const,
           notionId: pageIdFromUrl(row.url),
           title,
-          author: text(row.Author),
+          author,
           isbn,
         },
       ];
@@ -304,12 +305,14 @@ export function exportReviews(
   rows: NotionDumpRow[],
   titlesByNotionId: Map<string, string>,
 ): ImportRow[] {
+  const exportedIsbns = new Set(titlesByNotionId.values());
   return uniqueByNotionId(
     rows.flatMap((row) => {
       const reviewer = text(row["Your name"]);
       const score = reviewScore(row.Score);
+      const ownIsbn = isbnOf(row["Hardcover ISBN"]);
       const isbn =
-        isbnOf(row["Hardcover ISBN"]) ||
+        (ownIsbn && exportedIsbns.has(ownIsbn) ? ownIsbn : "") ||
         titlesByNotionId.get(firstRelationId(row["Book title 1"])) ||
         "";
       if (!reviewer || !isbn || !Number.isFinite(score)) {
@@ -346,7 +349,13 @@ export function exportVisits(
       const titleName = text(row["Book Title for Read Aloud"]);
       const isbn = titleName ? titlesByName.get(titleName.toLowerCase()) : "";
       const donated = Number(row["Number of Books Distributed"]);
-      if (!isbn || !Number.isFinite(donated) || donated <= 0) {
+      const readerNotionIds = relationIds(row["Lead Volunteer"]);
+      if (
+        !isbn ||
+        !Number.isFinite(donated) ||
+        donated <= 0 ||
+        readerNotionIds.length === 0
+      ) {
         return [];
       }
       const followUp = text(row["Next Steps or Follow Up"]);
@@ -358,7 +367,7 @@ export function exportVisits(
           occurredAt: parseWhen(row["date:Event Date:start"]),
           ...(followUp ? { followUp } : {}),
           staffNotionIds: relationIds(row["Contact Name"]),
-          readerNotionIds: relationIds(row["Lead Volunteer"]),
+          readerNotionIds,
           books: [{ isbn, donatedQuantity: donated, readAloud: true }],
         },
       ];
