@@ -38,7 +38,10 @@ npm run lint
 
 Notion import is shaped JSON plus a counts CSV. It does not call the Notion API.
 
+Build `{ "rows": [...] }` from a local J4B Data Hub dump, then dry-run.
+
 ```
+npx tsx scripts/export-notion.ts --dump dump.json --out notion.json
 npx tsx scripts/import-notion.ts --export notion.json --counts counts.csv
 ```
 

@@ -7,3 +7,6 @@ playwright-report/
 test-results/
 .DS_Store
 .vercel
+notion.json
+counts.csv
+local/

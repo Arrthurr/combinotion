@@ -25,7 +25,7 @@ Rotate the service account key when someone leaves or a sheet is unshared. Revok
 
 Notion is a read-only archive after cutover. Nothing writes back.
 
-1. Export the people, schools, titles, requests, visits, and reviews you still need. Keep the file as `{ "rows": [ ... ] }` using the import kinds in `lib/domain/notionImport.ts`.
+1. Export the people, schools, titles, requests, visits, and reviews you still need. Map the J4B Data Hub dump with `npx tsx scripts/export-notion.ts --dump dump.json --out notion.json`. Keep the file as `{ "rows": [ ... ] }` using the import kinds in `lib/domain/notionImport.ts`. Omitted schools lack any city/state, visit street, or request city; omitted visits lack a resolvable title.
 2. Export the launch-day physical count as a CSV with `isbn,quantity` columns.
 3. Dry-run first.
 
