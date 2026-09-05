@@ -1,5 +1,5 @@
-heading: Request books
-status: No titles are available to request right now.
+Skip to content
+
 For schools
 
 Request books
@@ -11,6 +11,8 @@ School name
 School address
 Contact name
 Email
+Title ISBN
+Copies
 Leave blank
 Reserve requested copies
 
