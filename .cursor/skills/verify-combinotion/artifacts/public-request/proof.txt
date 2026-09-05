@@ -1,4 +1,4 @@
-open: heading Request books
+open: heading Request books, Available titles
 empty: No titles are available to request right now.
 submit: Request received: JFB-TEST1234
 required: School name focused, API not called

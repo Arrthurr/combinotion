@@ -1,6 +1,6 @@
 # Public school request
 
-Schools request available donation titles at `/request-books`. Submit reserves copies. It does not change fundraising-store inventory. When public requests are held or Convex is down, the page says no titles are available.
+Schools request available donation titles at `/request-books`. Submit reserves copies. It does not change fundraising-store inventory. A hold hides the form and shows the hold status. When the form renders with no requestable titles, status says no titles are available.
 
 ## Sub-features
 
@@ -29,7 +29,7 @@ Preconditions:
 
 ## Gotchas
 
-- Live Convex with public requests held shows `Public book requests are closed` (or a custom hold) and hides the form. That is not a failure of the form, and it is not E2E unconfigured mode.
+- Live Convex with public requests held shows `Public book requests are closed` (or a custom hold) and hides the form. That is not a failure of the form, and it is not E2E unconfigured mode. A Convex query failure leaves the form up with the empty-titles status instead of a hold.
 - `Title ISBN` and `Copies` exist only when `allowUnconfiguredEntry` is on (empty Convex URL plus `NEXT_PUBLIC_E2E_UNCONFIGURED_REQUESTS=1`). Live titles use `Copies of <title>` instead.
 - Do not submit a real reserve against production to prove the button works.
 - Playwright default config takes port 3000. Use 3101 plus `drive.mjs` if 3000 is busy.

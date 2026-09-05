@@ -5,7 +5,7 @@ Staff record school visits. Anonymous users must not see the workspace. With Cle
 ## Sub-features
 
 - `visits-private` hides `School visits` and staff navigation when signed out with Clerk configured.
-- `visits-unconfigured` shows School, Occurred at, Staff present, Readers, Books, Follow-up and status `Connect Convex to save visits.`
+- `visits-unconfigured` shows heading `Staff authentication is not configured`, labels School, Occurred at, Staff present, Readers, Books, Follow-up, and status `Connect Convex to save visits.`
 
 ## How to get to it (user POV)
 

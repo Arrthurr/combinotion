@@ -36,9 +36,7 @@ npm run lint
 
 ## Import Notion data
 
-Notion import is shaped JSON plus a counts CSV. It does not call the Notion API.
-
-Build `{ "rows": [...] }` from a local J4B Data Hub dump, then dry-run.
+Notion import is shaped JSON plus a counts CSV. The app does not call the Notion API. Map a local J4B Data Hub dump to `notion.json`, then dry-run. The [launch and maintenance guide](docs/operations/launch-and-maintenance.md) covers Notion MCP access, request dispositions, and apply.
 
 ```
 npx tsx scripts/export-notion.ts --dump dump.json --out notion.json

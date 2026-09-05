@@ -65,9 +65,9 @@ Stable handles (from `e2e/` and the pages they cover):
 
 - Home: heading `Books that reach young readers.`; link `Request books for your school`; link `Staff workspace`
 - Public request: heading `Request books`; heading `Available titles`; labels `School name`, `School address`, `Contact name`, `Email`, `Title ISBN`, `Copies`; button `Reserve requested copies`; status role for hold/success
-- Staff page headings (signed-in layout only): `Book catalog`, `Add a title`, `Title workspace`, `Inventory`, `Supplier orders`, `School requests`, `School visits`, `Operations views`, `People`, `Schools`, `Book reviews`, `Incoming forms`, `Book popularity`, `Operations settings`; navigation `Staff navigation`
+- Staff page headings (signed-in layout only): `Book catalog`, `Add a title`, `Inventory`, `Supplier orders`, `School requests`, `School visits`, `Visit details`, `Operations views`, `People`, `Schools`, `Book reviews`, `Incoming forms`, `Book popularity`, `Operations settings`; navigation `Staff navigation`. `/books/[titleId]` fallback and not-found heading is `Title workspace`; a live Convex title uses the book title as the `h1`.
 - Unconfigured staff shell (Clerk publishable key empty): heading `Staff authentication is not configured`. Path fallbacks: `/visits` labels `School`, `Occurred at`, `Staff present`, `Readers`, group `Books`, label `Follow-up`, status `Connect Convex to save visits.`; `/reports` heading `Book popularity report` with disabled searchbox `Filter by title or author` and button `Export visible rows as CSV`; `/reviews` heading `Review moderation` with disabled button `Approve review`; `/views` headings `Table`, `Visit board`, `Timeline`
-- Auth boundary: anonymous `/books`, `/books/new`, `/visits`, `/requests`, `/reports`, `/reviews`, `/views` must NOT show the matching staff page heading or `Staff navigation`
+- Auth boundary: anonymous `/books`, `/books/new`, `/books/title_test`, `/visits`, `/visits/visit_test`, `/requests`, `/reports`, `/reviews`, `/views`, `/inventory`, `/orders`, `/people`, `/schools`, `/intake`, `/settings` must NOT show the matching staff page heading or `Staff navigation`
 
 POST `/api/school-requests` is the real public submit path. E2E may mock it. A live submit against production Convex is not a first-run proof. Public requests are held in production until staff open them.
 

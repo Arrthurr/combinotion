@@ -57,7 +57,8 @@ async function drivePublicRequest(page, baseUrl) {
   const proof = [];
   await page.goto(`${baseUrl}/request-books`);
   await page.getByRole("heading", { name: "Request books" }).waitFor();
-  proof.push("open: heading Request books");
+  await page.getByRole("heading", { name: "Available titles" }).waitFor();
+  proof.push("open: heading Request books, Available titles");
 
   for (const label of [
     "School name",
@@ -151,11 +152,19 @@ async function driveHomeAndAuthBoundary(page, baseUrl) {
   const hidden = [
     ["/books", "Book catalog"],
     ["/books/new", "Add a title"],
+    ["/books/title_test", "Title workspace"],
     ["/visits", "School visits"],
+    ["/visits/visit_test", "Visit details"],
     ["/requests", "School requests"],
     ["/reports", "Book popularity"],
     ["/reviews", "Book reviews"],
     ["/views", "Operations views"],
+    ["/inventory", "Inventory"],
+    ["/orders", "Supplier orders"],
+    ["/people", "People"],
+    ["/schools", "Schools"],
+    ["/intake", "Incoming forms"],
+    ["/settings", "Operations settings"],
   ];
   for (const [pathname, heading] of hidden) {
     await page.goto(`${baseUrl}${pathname}`);
@@ -191,7 +200,13 @@ async function driveStaffVisits(page, baseUrl) {
   if (schoolVisits !== 0 || nav !== 0) {
     throw new Error("Anonymous /visits showed staff workspace chrome");
   }
-  proof.push(`private: School visits=${schoolVisits} staff-nav=${nav}`);
+  await page
+    .getByRole("heading", { name: "Staff authentication is not configured" })
+    .waitFor();
+  proof.push(
+    `private: School visits=${schoolVisits} staff-nav=${nav}`,
+    "unconfigured: Staff authentication is not configured",
+  );
 
   for (const label of [
     "School",
@@ -287,6 +302,22 @@ async function driveStaffCatalog(page, baseUrl) {
     path: path.join(artifactsRoot, "staff-catalog", "books-new.png"),
     fullPage: true,
   });
+
+  await page.goto(`${baseUrl}/books/title_test`);
+  const titleWorkspace = await headingCount(page, "Title workspace");
+  const titleNav = await page
+    .getByRole("navigation", { name: "Staff navigation" })
+    .count();
+  if (titleWorkspace !== 0 || titleNav !== 0) {
+    throw new Error("Anonymous /books/title_test showed a title workspace");
+  }
+  proof.push(
+    `workspace: Title workspace=${titleWorkspace} staff-nav=${titleNav}`,
+  );
+  await page.screenshot({
+    path: path.join(artifactsRoot, "staff-catalog", "books-title.png"),
+    fullPage: true,
+  });
   await writeProof("staff-catalog", {
     "aria.txt": await snapshot(page),
     "proof.txt": `${proof.join("\n")}\n`,
@@ -303,6 +334,9 @@ async function driveStaffViews(page, baseUrl) {
   if (operations !== 0 || nav !== 0) {
     throw new Error("Anonymous /views showed operations views chrome");
   }
+  await page
+    .getByRole("heading", { name: "Staff authentication is not configured" })
+    .waitFor();
   for (const heading of ["Table", "Visit board", "Timeline"]) {
     if (!(await page.getByRole("heading", { name: heading }).isVisible())) {
       throw new Error(`Unconfigured /views missing ${heading}`);
@@ -310,7 +344,7 @@ async function driveStaffViews(page, baseUrl) {
   }
   proof.push(
     `private: Operations views=${operations} staff-nav=${nav}`,
-    "unconfigured: Table, Visit board, Timeline visible",
+    "unconfigured: Staff authentication is not configured; Table, Visit board, Timeline visible",
   );
   await page.screenshot({
     path: path.join(artifactsRoot, "staff-views", "unconfigured.png"),

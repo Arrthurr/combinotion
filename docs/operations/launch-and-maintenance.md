@@ -23,19 +23,41 @@ Rotate the service account key when someone leaves or a sheet is unshared. Revok
 
 ## Notion import
 
-Notion is a read-only archive after cutover. Nothing writes back.
+Notion is a read-only archive after cutover. Nothing writes back. The app does not call the Notion API. Cursor reads Notion into a dump, `export-notion.ts` maps that dump to `notion.json`, then the local script dry-runs and applies it.
 
-1. Export the people, schools, titles, requests, visits, and reviews you still need. Map the J4B Data Hub dump with `npx tsx scripts/export-notion.ts --dump dump.json --out notion.json`. Keep the file as `{ "rows": [ ... ] }` using the import kinds in `lib/domain/notionImport.ts`. Omitted schools lack any city/state, visit street, or request city; omitted visits lack a resolvable title.
-2. Export the launch-day physical count as a CSV with `isbn,quantity` columns.
-3. Dry-run first.
+### Produce the export
+
+1. Connect Cursor to Notion's hosted MCP (`https://mcp.notion.com/mcp`) in desktop or Cloud Agents MCP settings. Share every related people, school, title, request, visit, and review database with that connection. A related database that is not shared comes back with empty links.
+2. Write the request rules before any fetch. Each historical request has one fate:
+   - Omit the row. It stays in Notion only.
+   - `historicalContext` with `fulfilled`, `cancelled`, or `declined`. History only. No reservations. No stock movement.
+   - `verifiedActive` with `{ isbn, quantity }` lines. This becomes a live reservation and is the only import path that changes availability.
+   A request with no disposition becomes fulfilled history. Do not let the agent invent `verifiedActive` lines. `export-notion.ts` emits `historicalContext` only. Add `verifiedActive` lines by hand after the map if a request must still reserve stock.
+3. Ask Cursor to pull the people, schools, titles, requests, visits, and reviews you still need into `dump.json` as `{ people, organizations, titles, requests, reviews, visits }`. Prefer page ids over SQL query dumps. SQL mode can drop link targets. Relation lists on a page stop at 25 until you paginate the property.
+4. Map the dump.
+
+```
+npx tsx scripts/export-notion.ts --dump dump.json --out notion.json
+```
+
+The mapper writes `{ "rows": [ ... ] }` using the import kinds in `lib/domain/notionImport.ts`. It uses Notion page ids for `notionId`, `schoolNotionId`, `staffNotionIds`, and `readerNotionIds`, and the printed ISBN for every title, review, and visit book. Those ISBN strings must match exactly. People, schools, and titles come before the visits and requests that reference them. Omitted schools lack any city/state, visit street, or request city. Omitted visits lack a resolvable title.
+5. Export the launch-day physical count yourself as `counts.csv` with `isbn,quantity` columns. That file comes from the shelf, not from Notion.
+
+Treat the mapped `notion.json` as untrusted until the dry-run and a spot-check pass. Notion MCP returns whatever the connected account can see, including emails. Do not paste that dump into chat, tickets, or recap emails.
+
+### Dry-run, then apply
+
+1. Dry-run first.
 
 ```
 npx tsx scripts/import-notion.ts --export notion.json --counts counts.csv
 ```
 
-The script prints invalid rows and a preview digest. It writes nothing to Convex.
+The script prints invalid rows and a preview digest. It writes nothing to Convex. Dry-run checks shape and duplicate source ids. It does not prove that a `schoolNotionId` or ISBN exists. A missing school or title fails at apply and rolls the whole write back. A missing reader is skipped with no warning.
 
-4. Apply the same files only after the dry-run is clean.
+2. Spot-check the digest against the export. Confirm every visit has a school and readers you recognize. Confirm every `verifiedActive` line is a request that should still reserve stock.
+
+3. Apply the same files only after the dry-run is clean.
 
 ```
 npx tsx scripts/import-notion.ts --export notion.json --counts counts.csv --apply
@@ -43,7 +65,7 @@ npx tsx scripts/import-notion.ts --export notion.json --counts counts.csv --appl
 
 Apply pins to that digest. If you edit the files, run dry-run again. Replay is safe. Source ids are kept, so a second apply will not add a second opening balance or a second historical visit.
 
-5. Historical visits are read-only and do not move stock. Opening balances come from the physical count only, one keep-first movement per title.
+4. Historical visits are read-only and do not move stock. Opening balances come from the physical count only, one keep-first movement per title. If the same apply writes a `verifiedActive` reservation for a title and then an opening balance for that title, the opening balance is rejected. Put counts on after titles and before active requests, or apply counts first and active requests in a second run.
 
 ## Reconcile, then open requests
 
@@ -55,4 +77,4 @@ When the counts match, open public requests in Operations settings. Until then t
 
 - Pending intake and failed sheet polls belong on Incoming forms and Settings. Do not wait for an engineer to notice a 403.
 - Reservation shortages stay visible until you release or fulfill the affected request.
-- Operational records are kept. Do not paste service-account JSON or raw form dumps into chat, tickets, or recap emails.
+- Operational records are kept. Do not paste service-account JSON, raw form dumps, or Notion MCP exports into chat, tickets, or recap emails.
