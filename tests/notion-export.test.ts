@@ -93,7 +93,7 @@ describe("Notion launch export", () => {
     ]);
   });
 
-  it("drops titles without an ISBN and keeps stored ISBN text", () => {
+  it("drops titles without an ISBN or author and keeps stored ISBN text", () => {
     expect(
       exportTitles([
         {
@@ -103,6 +103,11 @@ describe("Notion launch export", () => {
           "Hardcover ISBN": "978-0593323793",
         },
         { url: "https://app.notion.com/p/eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee", Name: "No ISBN" },
+        {
+          url: "https://app.notion.com/p/12121212121212121212121212121212",
+          Name: "No Author",
+          "Hardcover ISBN": "978-1536229561",
+        },
       ]),
     ).toEqual([
       {
@@ -170,6 +175,7 @@ describe("Notion launch export", () => {
             url: reviewUrl,
             "Your name": "Riley",
             Score: 0.9,
+            "Hardcover ISBN": "978-0000000000",
             "Book title 1": `["${titleUrl}"]`,
             "Overall thoughts and comments.": "Keep it.",
           },
@@ -177,6 +183,12 @@ describe("Notion launch export", () => {
             url: "https://app.notion.com/p/99999999999999999999999999999999",
             Name: "Catalog stub",
             "Hardcover ISBN": "978-1536229561",
+          },
+          {
+            url: "https://app.notion.com/p/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "Your name": "Pat",
+            Score: 80,
+            "Hardcover ISBN": "978-0000000000",
           },
         ],
         titles,
@@ -329,7 +341,9 @@ describe("Notion launch export", () => {
     ]);
   });
 
-  it("omits a visit without a resolvable book title", () => {
+  it("omits a visit without a resolvable book title or lead volunteer", () => {
+    const schoolIds = new Set(["22222222-2222-2222-2222-222222222222"]);
+    const titlesByName = new Map([["hands", "978-0593323793"]]);
     expect(
       exportVisits(
         [
@@ -340,9 +354,16 @@ describe("Notion launch export", () => {
             "Lead Volunteer": `["${readerUrl}"]`,
             "Number of Books Distributed": 30,
           },
+          {
+            url: "https://app.notion.com/p/abababababababababababababababab",
+            "School or Organization Name": `["${schoolUrl}"]`,
+            "date:Event Date:start": "2024-11-04 16:00:00Z",
+            "Book Title for Read Aloud": "Hands",
+            "Number of Books Distributed": 30,
+          },
         ],
-        new Map(),
-        new Set(["22222222-2222-2222-2222-222222222222"]),
+        titlesByName,
+        schoolIds,
       ),
     ).toEqual([]);
   });
