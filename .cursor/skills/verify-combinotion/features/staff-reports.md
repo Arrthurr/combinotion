@@ -11,6 +11,7 @@ Staff review book popularity and moderate reviews. Anonymous users must not see 
 ## How to get to it (user POV)
 
 - Open `/reports` and `/reviews`.
+- From staff navigation after sign-in (`Reports`, `Reviews`).
 
 ## Driving it with Playwright
 
@@ -20,9 +21,9 @@ Preconditions:
 
 - **Signed out / Clerk on.** `/reports` heading `Book popularity` exact count is 0. `/reviews` heading `Book reviews` exact count is 0.
 - **E2E unconfigured.** `/reports` heading `Book popularity report` visible. Searchbox `Filter by title or author` disabled. Button `Export visible rows as CSV` disabled. `/reviews` heading `Review moderation` visible. Button `Approve review` disabled.
-- **Proof.** Screenshot both fallbacks or both hidden states.
+- **Proof.** Screenshot both fallbacks or both hidden states. Helper: `node .cursor/skills/verify-combinotion/drive.mjs --base-url http://127.0.0.1:3101 --feature staff-reports`.
 
 ## Gotchas
 
-- Exact vs long heading names differ (`Book popularity` vs `Book popularity report`). Use the name the spec uses for that mode.
+- Exact vs long heading names differ (`Book popularity` vs `Book popularity report`, `Book reviews` vs `Review moderation`). Use the name the spec uses for that mode.
 - Do not approve a real review on shared data.

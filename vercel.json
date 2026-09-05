@@ -1,1 +1,9 @@
-{ "framework": "nextjs", "regions": ["iad1"] }
+{
+  "framework": "nextjs",
+  "regions": ["iad1"],
+  "git": {
+    "deploymentEnabled": {
+      "cursor/*": false
+    }
+  }
+}
