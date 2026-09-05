@@ -228,7 +228,7 @@ export function exportPeople(rows: NotionDumpRow[]): ImportRow[] {
 export function exportSchools(
   rows: NotionDumpRow[],
   addresses: Map<string, string> = new Map(),
-): ImportRow[] {
+): Extract<ImportRow, { kind: "school" }>[] {
   return uniqueByNotionId(
     rows.flatMap((row) => {
       if (!isSchoolRow(row)) {
@@ -251,7 +251,9 @@ export function exportSchools(
   );
 }
 
-export function exportTitles(rows: NotionDumpRow[]): ImportRow[] {
+export function exportTitles(
+  rows: NotionDumpRow[],
+): Extract<ImportRow, { kind: "title" }>[] {
   return uniqueByNotionId(
     rows.flatMap((row) => {
       const title = text(row.Name);
@@ -283,6 +285,9 @@ export function exportRequests(rows: NotionDumpRow[]): ImportRow[] {
         return [];
       }
       const status = text(row.Status);
+      const requestStatus: "declined" | "fulfilled" = DECLINED_STATUS.has(status)
+        ? "declined"
+        : "fulfilled";
       return [
         {
           kind: "request" as const,
@@ -293,7 +298,7 @@ export function exportRequests(rows: NotionDumpRow[]): ImportRow[] {
           createdAt: parseWhen(row["Date Submitted"]),
           disposition: {
             kind: "historicalContext" as const,
-            status: DECLINED_STATUS.has(status) ? "declined" : "fulfilled",
+            status: requestStatus,
           },
         },
       ];
