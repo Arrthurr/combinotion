@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { readFileSync, writeFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import {
   dryRunImport,
@@ -28,10 +28,11 @@ function printReport(label: string, rows: ImportRow[]) {
 const exportPath = argValue("--export");
 const countsPath = argValue("--counts");
 const apply = process.argv.includes("--apply");
+const prod = process.argv.includes("--prod");
 
 if (!exportPath && !countsPath) {
   console.error(
-    "Usage: npx tsx scripts/import-notion.ts --export notion.json [--counts counts.csv] [--apply]",
+    "Usage: npx tsx scripts/import-notion.ts --export notion.json [--counts counts.csv] [--apply] [--prod]",
   );
   process.exit(1);
 }
@@ -57,20 +58,14 @@ if (!apply) {
   process.exit(0);
 }
 
-const argsPath = resolve("/tmp/notion-import-args.json");
-writeFileSync(
-  argsPath,
+const convexArgs = [
+  "convex",
+  "run",
+  "migrations/notionImport:applyFromScript",
   JSON.stringify({ rows, expectedDigest: report.digest }),
-);
-const result = spawnSync(
-  "npx",
-  [
-    "convex",
-    "run",
-    "migrations/notionImport:applyFromScript",
-    "--args-filename",
-    argsPath,
-  ],
-  { stdio: "inherit" },
-);
+];
+if (prod) {
+  convexArgs.push("--prod");
+}
+const result = spawnSync("npx", convexArgs, { stdio: "inherit" });
 process.exit(result.status ?? 1);
