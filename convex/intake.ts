@@ -685,26 +685,35 @@ export const resolveItem = mutation({
 });
 
 export const acceptPendingReviews = mutation({
-  args: {},
-  handler: async (ctx) => {
+  args: { limit: v.optional(v.number()) },
+  handler: async (ctx, { limit }) => {
     await requireStaff(ctx);
     const items = await ctx.db.query("intakeItems").collect();
+    const max = limit ?? 15;
     let accepted = 0;
+    let failures = 0;
     for (const item of items) {
+      if (accepted >= max) {
+        break;
+      }
       if (item.state.kind !== "pending") {
         continue;
       }
       if (item.state.candidate.kind !== "review") {
         continue;
       }
-      const state = await applyAutoMatch(ctx, item.state.candidate);
-      if (state.kind !== "resolved") {
-        continue;
+      try {
+        const state = await applyAutoMatch(ctx, item.state.candidate);
+        if (state.kind !== "resolved") {
+          continue;
+        }
+        await ctx.db.patch(item._id, { state });
+        accepted += 1;
+      } catch {
+        failures += 1;
       }
-      await ctx.db.patch(item._id, { state });
-      accepted += 1;
     }
-    return { accepted };
+    return { accepted, failures };
   },
 });
 

@@ -366,6 +366,7 @@ describe("intake", () => {
     });
     expect(await asStaff.mutation(api.intake.acceptPendingReviews, {})).toEqual({
       accepted: 1,
+      failures: 0,
     });
     expect(await asStaff.query(api.intake.listItems, { state: "pending" })).toEqual(
       [],
