@@ -70,6 +70,7 @@ describe("review moderation", () => {
         reviewId,
         titleId,
         title: "A Good Book",
+        inInventory: true,
         reviewer: "Rae Reviewer",
         feedback: "Ready for class.",
         score: 4,
@@ -94,5 +95,35 @@ describe("review moderation", () => {
         approved: true,
       }),
     );
+  });
+
+  it("lists a review that is not linked to inventory", async () => {
+    const t = convexTest(schema, modules);
+    await t.mutation(internal.staff.seedStaff, {
+      clerkId: "staff_1",
+      email: "coo@example.com",
+    });
+    const asStaff = t.withIdentity({ subject: "staff_1" });
+    const reviewId = await t.run(async (ctx) =>
+      ctx.db.insert("reviews", {
+        titleText: "A Book We Should Buy",
+        reviewer: "Pat",
+        feedback: "Buy this.",
+        score: 5,
+        approved: false,
+      }),
+    );
+
+    await expect(asStaff.query(api.reviews.list, {})).resolves.toEqual([
+      {
+        reviewId,
+        title: "A Book We Should Buy",
+        inInventory: false,
+        reviewer: "Pat",
+        feedback: "Buy this.",
+        score: 5,
+        approved: false,
+      },
+    ]);
   });
 });

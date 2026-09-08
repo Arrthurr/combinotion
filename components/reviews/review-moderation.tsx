@@ -92,6 +92,7 @@ function ReviewModerationLive() {
                 <strong>{review.title}</strong>
                 <p className="muted">
                   {review.reviewer}, rubric score {review.score}
+                  {review.inInventory ? "" : " · not in inventory"}
                 </p>
               </div>
               <p>{review.feedback}</p>

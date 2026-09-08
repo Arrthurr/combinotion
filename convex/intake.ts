@@ -94,6 +94,11 @@ async function catalogLookups(ctx: MutationCtx) {
   return {
     titleByIsbn: (isbn: string) =>
       titles.find((title) => title.isbn === isbn)?._id ?? null,
+    titleByTitleText: (titleText: string) =>
+      titles.find(
+        (title) =>
+          title.title.toLocaleLowerCase() === titleText.toLocaleLowerCase(),
+      )?._id ?? null,
     personByEmail: (email: string) =>
       people.find(
         (person) => person.email?.toLocaleLowerCase() === email.toLocaleLowerCase(),
@@ -103,11 +108,19 @@ async function catalogLookups(ctx: MutationCtx) {
 
 async function insertReviewFromCandidate(
   ctx: MutationCtx,
-  titleId: Id<"titles">,
   candidate: Extract<IntakeCandidate, { kind: "review" }>,
+  titleId?: Id<"titles">,
 ) {
+  const title = titleId ? await ctx.db.get(titleId) : null;
+  const titleText =
+    candidate.titleText?.trim() || title?.title || candidate.isbn?.trim();
+  if (!titleText) {
+    throw new Error("Reviewed title is required");
+  }
   return await ctx.db.insert("reviews", {
-    titleId,
+    ...(titleId ? { titleId } : {}),
+    titleText,
+    ...(candidate.isbn?.trim() ? { isbn: candidate.isbn.trim() } : {}),
     reviewer: candidate.reviewer,
     feedback: candidate.feedback,
     score: candidate.score,
@@ -123,11 +136,14 @@ async function applyAutoMatch(
   if (match.kind === "needsStaff") {
     return { kind: "pending", candidate };
   }
-  if (candidate.kind === "review" && match.target.kind === "title") {
+  if (match.kind === "recordReview") {
+    if (candidate.kind !== "review") {
+      throw new Error("Review match requires a review candidate");
+    }
     const reviewId = await insertReviewFromCandidate(
       ctx,
-      match.target.id as Id<"titles">,
       candidate,
+      match.titleId as Id<"titles"> | undefined,
     );
     return {
       kind: "resolved",
@@ -571,8 +587,8 @@ export const resolveItem = mutation({
         if (candidate.kind === "review" && action.record.kind === "title") {
           const reviewId = await insertReviewFromCandidate(
             ctx,
-            action.record.id as Id<"titles">,
             candidate,
+            action.record.id as Id<"titles">,
           );
           resolution = {
             kind: "attached",
@@ -641,8 +657,8 @@ export const resolveItem = mutation({
           }));
         const reviewId = await insertReviewFromCandidate(
           ctx,
-          titleId,
           candidate,
+          titleId,
         );
         resolution = {
           kind: "createdRecord",
@@ -665,6 +681,39 @@ export const resolveItem = mutation({
       },
     });
     return resolution;
+  },
+});
+
+export const acceptPendingReviews = mutation({
+  args: { limit: v.optional(v.number()) },
+  handler: async (ctx, { limit }) => {
+    await requireStaff(ctx);
+    const items = await ctx.db.query("intakeItems").collect();
+    const max = limit ?? 15;
+    let accepted = 0;
+    let failures = 0;
+    for (const item of items) {
+      if (accepted >= max) {
+        break;
+      }
+      if (item.state.kind !== "pending") {
+        continue;
+      }
+      if (item.state.candidate.kind !== "review") {
+        continue;
+      }
+      try {
+        const state = await applyAutoMatch(ctx, item.state.candidate);
+        if (state.kind !== "resolved") {
+          continue;
+        }
+        await ctx.db.patch(item._id, { state });
+        accepted += 1;
+      } catch {
+        failures += 1;
+      }
+    }
+    return { accepted, failures };
   },
 });
 

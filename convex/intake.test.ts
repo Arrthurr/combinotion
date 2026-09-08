@@ -130,7 +130,7 @@ describe("intake", () => {
     });
   });
 
-  it("creates a title and review from an unmatched review row", async () => {
+  it("records a review without creating inventory for an unmatched work", async () => {
     const { t, asStaff } = await createStaffTest();
     const feedId = await asStaff.mutation(api.intake.saveFeedConfig, {
       kind: "bookReviews",
@@ -159,32 +159,15 @@ describe("intake", () => {
         },
       ],
     });
-    const [item] = await asStaff.query(api.intake.listItems, { state: "pending" });
-    if (!item) {
-      throw new Error("Expected a pending review item");
-    }
-    const resolution = await asStaff.mutation(api.intake.resolveItem, {
-      itemId: item.itemId,
-      fingerprint: item.fingerprint,
-      action: {
-        kind: "createTitle",
-        title: "A New Book",
-        author: "Ann Author",
-        isbn: "9780000000999",
-      },
-    });
-    expect(resolution.kind).toBe("createdRecord");
+    const pending = await asStaff.query(api.intake.listItems, { state: "pending" });
+    expect(pending).toEqual([]);
     const titles = await asStaff.query(api.titles.listTitles, {});
     const reviews = await asStaff.query(api.reviews.list, {});
-    expect(titles).toEqual([
-      expect.objectContaining({
-        title: "A New Book",
-        isbn: "9780000000999",
-      }),
-    ]);
+    expect(titles).toEqual([]);
     expect(reviews).toEqual([
       expect.objectContaining({
         title: "A New Book",
+        inInventory: false,
         reviewer: "Pat",
         score: 5,
         approved: false,
@@ -192,7 +175,7 @@ describe("intake", () => {
     ]);
   });
 
-  it("creates a review when a pending review is attached to a title", async () => {
+  it("links a review to inventory when the reviewed title already exists", async () => {
     const { t, asStaff } = await createStaffTest();
     const titleId = await asStaff.mutation(api.titles.createTitle, {
       title: "Known Book",
@@ -225,26 +208,13 @@ describe("intake", () => {
         },
       ],
     });
-    const [item] = await asStaff.query(api.intake.listItems, { state: "pending" });
-    if (!item) {
-      throw new Error("Expected a pending review item");
-    }
-    const resolution = await asStaff.mutation(api.intake.resolveItem, {
-      itemId: item.itemId,
-      fingerprint: item.fingerprint,
-      action: {
-        kind: "attach",
-        record: { kind: "title", id: titleId },
-      },
-    });
-    expect(resolution).toEqual({
-      kind: "attached",
-      record: { kind: "review", id: expect.any(String) },
-    });
+    const pending = await asStaff.query(api.intake.listItems, { state: "pending" });
+    expect(pending).toEqual([]);
     const reviews = await asStaff.query(api.reviews.list, {});
     expect(reviews).toEqual([
       expect.objectContaining({
         titleId,
+        inInventory: true,
         reviewer: "Rae",
         feedback: "Useful in class",
       }),
@@ -328,26 +298,23 @@ describe("intake", () => {
   it("purges raw values after 180 days and keeps the intake record", async () => {
     const { t, asStaff } = await createStaffTest();
     const feedId = await asStaff.mutation(api.intake.saveFeedConfig, {
-      kind: "bookReviews",
-      spreadsheetId: "sheet-reviews",
+      kind: "donationApplications",
+      spreadsheetId: "sheet-donations",
       tabName: "Responses",
-      mapping: reviewMapping,
+      mapping: donationMapping,
     });
     await t.mutation(internal.intake.recordRows, {
       feedId,
       rows: [
         {
-          sourceId: "sheets:bookReviews:sheet-reviews:Responses:old",
+          sourceId: "sheets:donationApplications:sheet-donations:Responses:old",
           fingerprint: "old",
           rawValues: '["secret"]',
           outcome: {
             kind: "candidate",
             candidate: {
-              kind: "review",
-              reviewer: "Pat",
-              score: 4,
-              feedback: "Loved it",
-              isbn: "9780000000001",
+              kind: "donationApplication",
+              name: "Ada",
             },
           },
         },
@@ -369,6 +336,48 @@ describe("intake", () => {
     expect(kept.itemId).toBe(item.itemId);
     expect(kept.rawPayloadPresent).toBe(false);
     expect(kept.state.kind).toBe("pending");
+  });
+
+  it("accepts leftover pending reviews without creating titles", async () => {
+    const { t, asStaff } = await createStaffTest();
+    const feedId = await asStaff.mutation(api.intake.saveFeedConfig, {
+      kind: "bookReviews",
+      spreadsheetId: "sheet-reviews",
+      tabName: "Responses",
+      mapping: reviewMapping,
+    });
+    await t.run(async (ctx) => {
+      await ctx.db.insert("intakeItems", {
+        feedId,
+        sourceId: "sheets:bookReviews:sheet-reviews:Responses:leftover",
+        fingerprint: "leftover",
+        receivedAt: Date.now(),
+        state: {
+          kind: "pending",
+          candidate: {
+            kind: "review",
+            reviewer: "Pat",
+            score: 4,
+            feedback: "Buy this.",
+            titleText: "A Book We Should Buy",
+          },
+        },
+      });
+    });
+    expect(await asStaff.mutation(api.intake.acceptPendingReviews, {})).toEqual({
+      accepted: 1,
+      failures: 0,
+    });
+    expect(await asStaff.query(api.intake.listItems, { state: "pending" })).toEqual(
+      [],
+    );
+    expect(await asStaff.query(api.titles.listTitles, {})).toEqual([]);
+    expect(await asStaff.query(api.reviews.list, {})).toEqual([
+      expect.objectContaining({
+        title: "A Book We Should Buy",
+        inInventory: false,
+      }),
+    ]);
   });
 
   it("reports missing Google credentials on feed health", async () => {

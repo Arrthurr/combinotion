@@ -75,6 +75,7 @@ When the counts match, open public requests in Operations settings. Until then t
 
 ## Routine work
 
+- Book reviews are a purchase signal. A submitted review is recorded even when that book is not in inventory. Incoming forms should not wait for a catalog match before accepting a review.
 - Pending intake and failed sheet polls belong on Incoming forms and Settings. Do not wait for an engineer to notice a 403.
 - Reservation shortages stay visible until you release or fulfill the affected request.
 - Operational records are kept. Do not paste service-account JSON, raw form dumps, or Notion MCP exports into chat, tickets, or recap emails.

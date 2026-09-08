@@ -62,7 +62,15 @@ export default defineSchema({
   viewConfigs:defineTable({ clerkId:v.string(), tableColumns:v.array(v.string()) }).index("by_clerkId",["clerkId"]),
   visitPeople:defineTable({ visitId:v.id("visits"), personId:v.id("people"), kind:v.union(v.literal("staff"),v.literal("reader")) }).index("by_visit",["visitId"]).index("by_person",["personId"]),
   visitBooks:defineTable({ visitId:v.id("visits"), titleId:v.id("titles"), donatedQuantity:v.number(), readAloud:v.boolean(), consumptionStatus:v.union(v.literal("consumed"),v.literal("none"),v.literal("ambiguous")), consumedReservationId:v.optional(v.id("reservations")), consumedQuantity:v.number() }).index("by_visit",["visitId"]),
-  reviews:defineTable({ titleId:v.id("titles"), reviewer:v.string(), feedback:v.string(), score:v.number(), approved:v.boolean() }).index("by_title",["titleId"]),
+  reviews:defineTable({
+    titleId: v.optional(v.id("titles")),
+    titleText: v.optional(v.string()),
+    isbn: v.optional(v.string()),
+    reviewer: v.string(),
+    feedback: v.string(),
+    score: v.number(),
+    approved: v.boolean(),
+  }).index("by_title", ["titleId"]),
   orgSettings:defineTable({
     key:v.literal("org"),
     lowStockThreshold:v.number(),

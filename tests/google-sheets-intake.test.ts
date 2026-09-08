@@ -200,7 +200,25 @@ describe("Google Sheets intake", () => {
     ).toEqual({ kind: "markDrift" });
   });
 
-  it("auto-applies a review whose ISBN matches a title", () => {
+  it("records a review even when no catalog title matches", () => {
+    expect(
+      matchCandidate(
+        {
+          kind: "review",
+          reviewer: "Pat",
+          score: 4,
+          feedback: "Loved it",
+          titleText: "A Book We Do Not Own",
+        },
+        {
+          titleByIsbn: () => null,
+          personByEmail: () => null,
+        },
+      ),
+    ).toEqual({ kind: "recordReview" });
+  });
+
+  it("links a review to inventory when the ISBN already exists", () => {
     expect(
       matchCandidate(
         {
@@ -217,8 +235,8 @@ describe("Google Sheets intake", () => {
         },
       ),
     ).toEqual({
-      kind: "autoApply",
-      target: { kind: "title", id: "title_1" },
+      kind: "recordReview",
+      titleId: "title_1",
     });
   });
 

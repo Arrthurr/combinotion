@@ -5,8 +5,9 @@ import { requireStaff } from "./lib/auth";
 
 export type ModerationReview = {
   reviewId: Id<"reviews">;
-  titleId: Id<"titles">;
+  titleId?: Id<"titles">;
   title: string;
+  inInventory: boolean;
   reviewer: string;
   feedback: string;
   score: number;
@@ -20,14 +21,14 @@ export const list = query({
     const reviews = await ctx.db.query("reviews").collect();
     const joined = await Promise.all(
       reviews.map(async (review) => {
-        const title = await ctx.db.get(review.titleId);
-        if (!title) {
-          throw new Error("Title not found");
-        }
+        const title = review.titleId
+          ? await ctx.db.get(review.titleId)
+          : null;
         return {
           reviewId: review._id,
-          titleId: review.titleId,
-          title: title.title,
+          ...(review.titleId ? { titleId: review.titleId } : {}),
+          title: review.titleText ?? title?.title ?? "Untitled review",
+          inInventory: title !== null,
           reviewer: review.reviewer,
           feedback: review.feedback,
           score: review.score,

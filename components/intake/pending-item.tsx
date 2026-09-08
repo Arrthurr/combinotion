@@ -243,7 +243,7 @@ export function PendingItem({
             />
           </label>
           <button className="button" disabled={busy} type="submit">
-            Create title and review from this row
+            Add this reviewed book to inventory
           </button>
         </form>
       )}
