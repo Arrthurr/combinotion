@@ -89,6 +89,34 @@ describe("book popularity", () => {
     ]);
   });
 
+  it("lists a reviewed work that is not in inventory", () => {
+    const result = derivePopularity({
+      titles: [{ titleId: "owned", title: "Owned", author: "Ann" }],
+      reservations: [],
+      visitBooks: [],
+      reviews: [{ titleText: "A Book We Should Buy", score: 5 }],
+    });
+
+    expect(result).toEqual([
+      {
+        titleId: "reviewed:a book we should buy",
+        title: "A Book We Should Buy",
+        author: "",
+        requestCount: 0,
+        donatedQuantity: 0,
+        averageScore: 5,
+      },
+      {
+        titleId: "owned",
+        title: "Owned",
+        author: "Ann",
+        requestCount: 0,
+        donatedQuantity: 0,
+        averageScore: null,
+      },
+    ]);
+  });
+
   it("filters independent metrics and preserves every column", () => {
     const visible = visiblePopularityRows(rows, {
       filter: {

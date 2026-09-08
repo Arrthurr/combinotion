@@ -43,7 +43,8 @@ export type PopularityInputs<TitleId = string, RequestId = string> = {
     donatedQuantity: number;
   }>;
   reviews: ReadonlyArray<{
-    titleId: TitleId;
+    titleId?: TitleId;
+    titleText?: string;
     score: number;
   }>;
 };
@@ -71,6 +72,21 @@ type PopularityAccumulator<TitleId> = PopularityRow<TitleId> & {
   reviewScoreTotal: number;
   reviewScoreCount: number;
 };
+
+export function reviewedWorkKey(titleText: string) {
+  return `reviewed:${titleText.trim().toLocaleLowerCase()}`;
+}
+
+function addReviewScore<TitleId>(
+  row: PopularityAccumulator<TitleId> | undefined,
+  score: number,
+) {
+  if (!row) {
+    return;
+  }
+  row.reviewScoreTotal += score;
+  row.reviewScoreCount += 1;
+}
 
 export function derivePopularity<TitleId, RequestId>(
   inputs: PopularityInputs<TitleId, RequestId>,
@@ -111,11 +127,31 @@ export function derivePopularity<TitleId, RequestId>(
   }
 
   for (const review of inputs.reviews) {
-    const row = rows.get(review.titleId);
-    if (row) {
-      row.reviewScoreTotal += review.score;
-      row.reviewScoreCount += 1;
+    if (review.titleId !== undefined) {
+      addReviewScore(rows.get(review.titleId), review.score);
+      continue;
     }
+    const titleText = review.titleText?.trim();
+    if (!titleText) {
+      continue;
+    }
+    const workId = reviewedWorkKey(titleText) as TitleId;
+    const existing = rows.get(workId);
+    if (existing) {
+      addReviewScore(existing, review.score);
+      continue;
+    }
+    const created: PopularityAccumulator<TitleId> = {
+      titleId: workId,
+      title: titleText,
+      author: "",
+      requestCount: 0,
+      donatedQuantity: 0,
+      averageScore: null,
+      reviewScoreTotal: review.score,
+      reviewScoreCount: 1,
+    };
+    rows.set(workId, created);
   }
 
   return [...rows.values()]

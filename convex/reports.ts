@@ -28,7 +28,8 @@ export const popularity = query({
         donatedQuantity: book.donatedQuantity,
       })),
       reviews: reviews.map((review) => ({
-        titleId: review.titleId,
+        ...(review.titleId ? { titleId: review.titleId } : {}),
+        ...(review.titleText ? { titleText: review.titleText } : {}),
         score: review.score,
       })),
     });

@@ -94,6 +94,7 @@ export type MatchOutcome =
       kind: "autoApply";
       target: { kind: "title"; id: string } | { kind: "person"; id: string };
     }
+  | { kind: "recordReview"; titleId?: string }
   | { kind: "needsStaff" };
 
 export function sheetsSourceId(
@@ -314,17 +315,19 @@ export function matchCandidate(
   candidate: IntakeCandidate,
   lookups: {
     titleByIsbn: (isbn: string) => string | null;
+    titleByTitleText?: (title: string) => string | null;
     personByEmail: (email: string) => string | null;
   },
 ): MatchOutcome {
   if (candidate.kind === "review") {
-    if (!candidate.isbn) {
-      return { kind: "needsStaff" };
-    }
-    const titleId = lookups.titleByIsbn(candidate.isbn);
+    const titleId =
+      (candidate.isbn ? lookups.titleByIsbn(candidate.isbn) : null) ??
+      (candidate.titleText && lookups.titleByTitleText
+        ? lookups.titleByTitleText(candidate.titleText)
+        : null);
     return titleId
-      ? { kind: "autoApply", target: { kind: "title", id: titleId } }
-      : { kind: "needsStaff" };
+      ? { kind: "recordReview", titleId }
+      : { kind: "recordReview" };
   }
   if (!candidate.email) {
     return { kind: "needsStaff" };
