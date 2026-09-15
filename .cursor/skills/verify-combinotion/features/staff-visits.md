@@ -17,6 +17,7 @@ Staff record school visits. Anonymous users must not see the workspace. With Cle
 Preconditions:
 
 - Isolated server. Say which mode: Clerk-on vs E2E unconfigured.
+- E2E unconfigured fallbacks need empty `NEXT_PUBLIC_CONVEX_URL`. If Convex URL is set, `VisitEditor` mounts the live form and the connect status is missing.
 
 - **Signed out / Clerk on.** Go to `/visits`. Heading `School visits` count is 0. Navigation `Staff navigation` count is 0.
 - **E2E unconfigured.** Go to `/visits`. Expect heading `Staff authentication is not configured`. Expect labels `School`, `Occurred at`, `Staff present`, `Readers`, group `Books`, label `Follow-up`. Status contains `Connect Convex to save visits.`
@@ -28,3 +29,4 @@ Preconditions:
 - Saving a visit moves operational data. Do not save on a shared Convex deployment from verification.
 - Historical imported visits are read-only and do not move stock.
 - Unconfigured mode replaces the staff layout. `School visits` stays at count 0 even though the visit editor fields are visible.
+- Status `Connect Convex to save visits.` exists only in the Convex-empty fallback. Emptying Clerk keys is not enough if `.env.local` still has `NEXT_PUBLIC_CONVEX_URL`.

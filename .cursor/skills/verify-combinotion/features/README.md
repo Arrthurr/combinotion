@@ -4,7 +4,7 @@ Maintained source for verifying Joy for Books operations (combinotion) as a user
 
 ## Baseline preconditions
 
-- Prefer an isolated Next.js on `http://127.0.0.1:3101` with `NEXT_PUBLIC_E2E_UNCONFIGURED_REQUESTS=1` and empty Clerk keys.
+- Prefer an isolated Next.js on `http://127.0.0.1:3101` with `NEXT_PUBLIC_E2E_UNCONFIGURED_REQUESTS=1`, empty Clerk keys, and empty `NEXT_PUBLIC_CONVEX_URL`.
 - Do not attach to a leftover process on port 3000. Cloud Agent `environment.json` may already own 3000 via `npm run dev` without E2E flags.
 - Run the skill Doctor section first.
 - Staff features require a Clerk session and a seeded staff identity. Skip them unless that session was created for this run.

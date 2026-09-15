@@ -7,11 +7,13 @@ The home page points schools at the public form and staff at the workspace. Anon
 - `home-copy` shows the Joy for Books pitch and both entry links.
 - `home-to-request` reaches `/request-books` from the school link.
 - `anon-staff` hides staff catalog, title workspace, visits, requests, reports, reviews, views, remaining staff headings, and staff navigation.
+- `anon-sign-in` keeps `/sign-in` and `/sign-up` without staff navigation or `Book catalog`. Empty Clerk shows heading `Staff authentication is not configured`.
 
 ## How to get to it (user POV)
 
 - Open `/`.
 - Open `/books`, `/books/new`, `/books/<titleId>`, `/visits`, `/requests`, `/reports`, `/reviews`, `/views` while signed out.
+- Open `/sign-in` and `/sign-up` while Clerk keys are empty.
 - Optional spot-check: `/inventory`, `/orders`, `/people`, `/schools`, `/intake`, `/settings`, `/visits/<visitId>`.
 
 ## Driving it with Playwright
@@ -31,10 +33,11 @@ Preconditions:
 - **Reviews hidden.** Go to `/reviews`. Heading `Book reviews` (exact) count is 0.
 - **Views hidden.** Go to `/views`. Heading `Operations views` count is 0.
 - **Optional staff URLs.** Helper also checks `/inventory`, `/orders`, `/people`, `/schools`, `/intake`, `/settings`, and `/visits/visit_test` stay without their staff headings and `Staff navigation`.
+- **Sign-in / sign-up.** Go to `/sign-in` and `/sign-up`. Heading `Staff authentication is not configured` is visible. Heading `Book catalog` count is 0. Navigation `Staff navigation` count is 0.
 - **Proof.** Screenshot home and one staff URL that stayed private. Helper: `node .cursor/skills/verify-combinotion/drive.mjs --base-url http://127.0.0.1:3101 --feature home-and-auth-boundary`.
 
 ## Gotchas
 
-- Unconfigured staff pages can still render labelled fallbacks (visits, reports, reviews, views) when Clerk keys are empty. The auth-boundary check is the staff page heading (`School visits`, `Book popularity` exact, `Book reviews` exact, `Operations views`) and `Staff navigation`, not whether a form shell exists.
+- Unconfigured staff pages can still render labelled fallbacks (visits, reports, reviews, views) when Clerk keys are empty. The auth-boundary check is the staff page heading (`School visits`, `Book popularity` exact, `Book reviews` exact, `Operations views`) and `Staff navigation`, not whether a form shell exists. Empty-Clerk `/sign-in` and `/sign-up` use the same unconfigured heading and have no extra labelled controls.
 - A signed-in staff session invalidates this feature. Use a fresh browser context.
 - `/books/new` signed-in heading is `Add a title`. `Title workspace` is the `/books/[titleId]` fallback or not-found heading. A live Convex title uses the book title as the `h1`.

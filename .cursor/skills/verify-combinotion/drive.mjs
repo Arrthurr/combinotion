@@ -149,6 +149,21 @@ async function driveHomeAndAuthBoundary(page, baseUrl) {
   await page.getByRole("heading", { name: "Request books" }).waitFor();
   proof.push("home-to-request: Request books");
 
+  for (const pathname of ["/sign-in", "/sign-up"]) {
+    await page.goto(`${baseUrl}${pathname}`);
+    await page
+      .getByRole("heading", { name: "Staff authentication is not configured" })
+      .waitFor();
+    const catalog = await headingCount(page, "Book catalog");
+    const nav = await page
+      .getByRole("navigation", { name: "Staff navigation" })
+      .count();
+    if (catalog !== 0 || nav !== 0) {
+      throw new Error(`${pathname} leaked Book catalog or staff navigation`);
+    }
+    proof.push(`anon ${pathname}: unconfigured heading, Book catalog=${catalog} staff-nav=${nav}`);
+  }
+
   const hidden = [
     ["/books", "Book catalog"],
     ["/books/new", "Add a title"],
@@ -240,8 +255,11 @@ async function driveStaffVisits(page, baseUrl) {
 async function driveStaffReports(page, baseUrl) {
   const proof = [];
   await page.goto(`${baseUrl}/reports`);
-  if ((await headingCount(page, "Book popularity", true)) !== 0) {
-    throw new Error("Anonymous /reports showed Book popularity");
+  const reportsNav = await page
+    .getByRole("navigation", { name: "Staff navigation" })
+    .count();
+  if ((await headingCount(page, "Book popularity", true)) !== 0 || reportsNav !== 0) {
+    throw new Error("Anonymous /reports showed Book popularity or staff navigation");
   }
   await page.getByRole("heading", { name: "Book popularity report" }).waitFor();
   if (
@@ -250,21 +268,28 @@ async function driveStaffReports(page, baseUrl) {
   ) {
     throw new Error("Unconfigured report controls were enabled");
   }
-  proof.push("reports: Book popularity report visible, filter and CSV disabled");
+  proof.push(
+    `reports: Book popularity report visible, filter and CSV disabled, staff-nav=${reportsNav}`,
+  );
   await page.screenshot({
     path: path.join(artifactsRoot, "staff-reports", "reports.png"),
     fullPage: true,
   });
 
   await page.goto(`${baseUrl}/reviews`);
-  if ((await headingCount(page, "Book reviews", true)) !== 0) {
-    throw new Error("Anonymous /reviews showed Book reviews");
+  const reviewsNav = await page
+    .getByRole("navigation", { name: "Staff navigation" })
+    .count();
+  if ((await headingCount(page, "Book reviews", true)) !== 0 || reviewsNav !== 0) {
+    throw new Error("Anonymous /reviews showed Book reviews or staff navigation");
   }
   await page.getByRole("heading", { name: "Review moderation" }).waitFor();
   if (!(await page.getByRole("button", { name: "Approve review" }).isDisabled())) {
     throw new Error("Unconfigured Approve review was enabled");
   }
-  proof.push("reviews: Review moderation visible, Approve review disabled");
+  proof.push(
+    `reviews: Review moderation visible, Approve review disabled, staff-nav=${reviewsNav}`,
+  );
   await page.screenshot({
     path: path.join(artifactsRoot, "staff-reports", "reviews.png"),
     fullPage: true,
