@@ -18,11 +18,12 @@ Schools request available donation titles at `/request-books`. Submit reserves c
 
 Preconditions:
 
-- Isolated server on 3101 in E2E unconfigured mode, or Playwright config webServer with 3000 free.
-- Doctor passed. The HTML includes `School name`.
+- Isolated server on 3101 in E2E unconfigured mode (empty Clerk keys, empty `NEXT_PUBLIC_CONVEX_URL`, `NEXT_PUBLIC_E2E_UNCONFIGURED_REQUESTS=1`).
+- Doctor passed. The HTML includes `School name` and `Title ISBN`.
 
 - **Open form.** Go to `/request-books`. Run `node .cursor/skills/verify-combinotion/drive.mjs --base-url http://127.0.0.1:3101 --feature public-request`. Expect heading `Request books`. Expect heading `Available titles`. Expect labels `School name`, `School address`, `Contact name`, `Email`.
-- **Empty / hold state.** Expect a status containing `No titles are available to request right now.` when no requestable titles exist (E2E unconfigured or production hold).
+- **Empty titles.** Expect a status containing `No titles are available to request right now.` when the form renders with no requestable titles (E2E unconfigured).
+- **Hold.** A live Convex hold replaces the form. Status is `Public book requests are closed` (or a custom hold). There is no `School name` field. That is not this E2E recipe.
 - **Valid submit (mocked).** Route `**/api/school-requests` to 201 with reference `JFB-TEST1234`. Fill `School name` Joy School, `School address` 1 Main Street, `Contact name` Pat Reader, `Email` pat@example.com, `Title ISBN` 9780000000001, `Copies` 2. Click `Reserve requested copies`. Status contains `Request received: JFB-TEST1234`.
 - **Required fields.** Reload `/request-books`, click `Reserve requested copies` with empty fields. `School name` is focused. The API is not called.
 - **Proof.** Screenshot `artifacts/public-request/form.png` with the heading visible. Keep `artifacts/public-request/proof.txt` and `aria.txt`.
