@@ -23,7 +23,7 @@ NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY= CLERK_SECRET_KEY= NEXT_PUBLIC_CONVEX_URL= NEX
 
 Ready when `http://127.0.0.1:3101/request-books` returns HTML containing `<h1>Request books</h1>`, the label `School name`, and `Title ISBN`. Use port 3101 so a leftover process on 3000 is not stolen. Cloud Agent environments may already run `npm run dev` on 3000 without the E2E flags; leave that process alone.
 
-Repo Playwright (`playwright.config.ts`) empties Clerk keys and sets the E2E flag. It does not empty `NEXT_PUBLIC_CONVEX_URL`. Prefer this 3101 launch plus `drive.mjs`.
+Repo Playwright (`playwright.config.ts`) empties Clerk keys, empties `NEXT_PUBLIC_CONVEX_URL`, and sets the E2E flag. Prefer this 3101 launch plus `drive.mjs` when port 3000 is already in use.
 
 Teardown: kill only the PID you started. Never kill by process name.
 
@@ -72,7 +72,7 @@ node .cursor/skills/verify-combinotion/drive.mjs --base-url http://127.0.0.1:310
 
 `--feature` values: `public-request`, `home-and-auth-boundary`, `staff-visits`, `staff-reports`, `staff-catalog`, `staff-views`.
 
-Repo Playwright specs (`npx playwright test e2e/public-request.spec.ts --config=playwright.config.ts`) start their own Next server on port 3000 with Clerk keys emptied and `NEXT_PUBLIC_E2E_UNCONFIGURED_REQUESTS=1`. They do not empty `NEXT_PUBLIC_CONVEX_URL`. `reuseExistingServer` is false. Do not run that config while port 3000 is already in use. Prefer the 3101 server plus `drive.mjs`.
+Repo Playwright specs (`npx playwright test e2e/public-request.spec.ts --config=playwright.config.ts`) start their own Next server on port 3000 with Clerk keys emptied, `NEXT_PUBLIC_CONVEX_URL` emptied, and `NEXT_PUBLIC_E2E_UNCONFIGURED_REQUESTS=1`. `reuseExistingServer` is false. Do not run that config while port 3000 is already in use. Prefer the 3101 server plus `drive.mjs` when 3000 is busy.
 
 Stable handles (from `e2e/` and the pages they cover):
 
