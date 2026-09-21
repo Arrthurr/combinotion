@@ -11,3 +11,4 @@ dump.json
 notion.json
 counts.csv
 local/
+.amp/portals/*

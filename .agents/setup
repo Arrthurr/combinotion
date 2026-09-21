@@ -1,0 +1,87 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$root"
+
+step() {
+  local name="$1"
+  shift
+  echo "==> $name"
+  local start end
+  start="$(date +%s)"
+  "$@"
+  end="$(date +%s)"
+  echo "==> $name done in $((end - start))s"
+}
+
+ensure_apt_packages() {
+  local pkg missing=()
+  for pkg in "$@"; do
+    if ! dpkg -s "$pkg" >/dev/null 2>&1; then
+      missing+=("$pkg")
+    fi
+  done
+  if ((${#missing[@]} == 0)); then
+    echo "==> system packages already present"
+    return 0
+  fi
+  echo "==> installing system packages: ${missing[*]}"
+  sudo apt-get update
+  sudo apt-get install -y "${missing[@]}"
+}
+
+stamp="node_modules/.amp-npm-ci-stamp"
+lock_hash="$(sha256sum package-lock.json | awk '{print $1}')"
+
+install_npm() {
+  npm ci --no-audit --no-fund
+  printf '%s\n' "$lock_hash" >"$stamp"
+}
+
+# Playwright --with-deps packages that are often missing on a minimal Debian image.
+# Skip apt-get when a snapshot already has them.
+step "Check Playwright OS libraries" ensure_apt_packages \
+  libasound2 \
+  libatk-bridge2.0-0 \
+  libatk1.0-0 \
+  libcups2 \
+  libdrm2 \
+  libgbm1 \
+  libgtk-3-0 \
+  libnss3 \
+  libxcomposite1 \
+  libxdamage1 \
+  libxfixes3 \
+  libxkbcommon0 \
+  libxrandr2 \
+  fonts-liberation \
+  fonts-noto-color-emoji
+
+if [[ ! -d node_modules || ! -f "$stamp" || "$(cat "$stamp")" != "$lock_hash" ]]; then
+  step "Install npm dependencies" install_npm
+else
+  echo "==> npm dependencies already match package-lock.json"
+fi
+
+if [[ ! -f .env.local ]]; then
+  step "Copy env template" cp -- .env.example .env.local
+else
+  echo "==> .env.local already exists, leaving it in place"
+fi
+
+step "Install Playwright Chromium" npx playwright install chromium
+
+amp_config_dir="${HOME}/.config/amp"
+mkdir -p "$amp_config_dir"
+cat >"${amp_config_dir}/AGENTS.md" <<'EOF'
+# Combinotion orb notes
+
+- Toolchain is npm + the orb image Node. CI uses Node 22; Next 15 accepts Node >= 20.
+- `npm ci` from `package-lock.json` and Playwright Chromium are installed in `.agents/setup`.
+- `.env.local` is copied from `.env.example` when missing. Convex and Clerk values stay empty unless project secrets are set. Unit tests (`npm test`) do not need live backends.
+- Do not start `next dev` or `convex dev` from setup. Use `amp orb service start` (or `.amp/services.yaml`) for long-lived servers.
+- Checks: `npm test`, `npm run typecheck`, `npm run lint`, `npm run test:e2e`.
+EOF
+
+echo "==> setup complete"

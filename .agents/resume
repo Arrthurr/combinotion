@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$root"
+
+if [[ ! -f .env.local && -f .env.example ]]; then
+  cp -- .env.example .env.local
+fi
+
+if [[ ! -d node_modules ]]; then
+  echo "warning: node_modules missing; run .agents/setup" >&2
+fi
