@@ -1,6 +1,7 @@
 import { v } from "convex/values";
 import { internal } from "../_generated/api";
 import { action } from "../_generated/server";
+import { normalizeIsbn } from "../../lib/domain/catalog";
 import {
   parseOpenLibraryBook,
   type IsbnLookupResult,
@@ -12,7 +13,7 @@ export const lookupIsbn = action({
   },
   handler: async (ctx, { isbn }): Promise<IsbnLookupResult> => {
     await ctx.runQuery(internal.staff.assertStaff, {});
-    const cleanIsbn = isbn.trim();
+    const cleanIsbn = normalizeIsbn(isbn);
     if (cleanIsbn.length === 0) {
       throw new Error("ISBN is required");
     }

@@ -93,7 +93,7 @@ describe("Notion launch export", () => {
     ]);
   });
 
-  it("drops titles without an ISBN or author and keeps stored ISBN text", () => {
+  it("drops titles without an ISBN or author and stores digit-only ISBNs", () => {
     expect(
       exportTitles([
         {
@@ -108,6 +108,13 @@ describe("Notion launch export", () => {
           Name: "No Author",
           "Hardcover ISBN": "978-1536229561",
         },
+        {
+          url: "https://app.notion.com/p/34343434343434343434343434343434",
+          Name: "The Great Banned Books Bake Sale",
+          Author:
+            "[Aya Khalil](https://www.amazon.com/Aya-Khalil/e/B07XWRSCJX/ref=dp_byline_cont_book_1)",
+          "Hardcover ISBN": "978-0823456386",
+        },
       ]),
     ).toEqual([
       {
@@ -115,7 +122,14 @@ describe("Notion launch export", () => {
         notionId: "33333333-3333-3333-3333-333333333333",
         title: "Hands",
         author: "Lois Ehlert",
-        isbn: "978-0593323793",
+        isbn: "9780593323793",
+      },
+      {
+        kind: "title",
+        notionId: "34343434-3434-3434-3434-343434343434",
+        title: "The Great Banned Books Bake Sale",
+        author: "Aya Khalil",
+        isbn: "9780823456386",
       },
     ]);
   });
@@ -166,7 +180,7 @@ describe("Notion launch export", () => {
 
   it("resolves review ISBNs from related titles and scales percent scores", () => {
     const titles = new Map([
-      ["33333333-3333-3333-3333-333333333333", "978-0593323793"],
+      ["33333333-3333-3333-3333-333333333333", "9780593323793"],
     ]);
     expect(
       exportReviews(
@@ -197,7 +211,7 @@ describe("Notion launch export", () => {
       {
         kind: "review",
         notionId: "55555555-5555-5555-5555-555555555555",
-        isbn: "978-0593323793",
+        isbn: "9780593323793",
         reviewer: "Riley",
         score: 90,
         feedback: "Keep it.",
@@ -343,7 +357,7 @@ describe("Notion launch export", () => {
 
   it("omits a visit without a resolvable book title or lead volunteer", () => {
     const schoolIds = new Set(["22222222-2222-2222-2222-222222222222"]);
-    const titlesByName = new Map([["hands", "978-0593323793"]]);
+    const titlesByName = new Map([["hands", "9780593323793"]]);
     expect(
       exportVisits(
         [

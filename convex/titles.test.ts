@@ -103,6 +103,71 @@ describe("staff titles", () => {
     );
   });
 
+  it("stores digit-only ISBNs and rejects a hyphenated duplicate", async () => {
+    const t = convexTest(schema, modules);
+    await t.mutation(internal.staff.seedStaff, {
+      clerkId: "staff_1",
+      email: "coo@example.com",
+    });
+    const asStaff = t.withIdentity({ subject: "staff_1" });
+    const titleId = await asStaff.mutation(api.titles.createTitle, {
+      title: "The Great Banned Books Bake Sale",
+      author:
+        "[Aya Khalil](https://www.amazon.com/Aya-Khalil/e/B07XWRSCJX/ref=dp_byline_cont_book_1)",
+      isbn: "978-0823456386",
+      synopsis: "A **classroom** favorite.",
+      notes: "See [the publisher](https://example.org).",
+      purchaseInfo: "Catalog ~~42~~",
+    });
+    const titles = await asStaff.query(api.titles.listTitles, {});
+    expect(titles).toEqual([
+      expect.objectContaining({
+        _id: titleId,
+        title: "The Great Banned Books Bake Sale",
+        author: "Aya Khalil",
+        isbn: "9780823456386",
+        synopsis: "A classroom favorite.",
+        notes: "See the publisher.",
+        purchaseInfo: "Catalog 42",
+      }),
+    ]);
+    await expect(
+      asStaff.mutation(api.titles.createTitle, {
+        title: "Bake Sale again",
+        author: "Aya Khalil",
+        isbn: "9780823456386",
+      }),
+    ).rejects.toThrow("A title with this ISBN already exists");
+  });
+
+  it("projects leftover markdown authors as plain names on the public list", async () => {
+    const t = convexTest(schema, modules);
+    await t.run(async (ctx) => {
+      await ctx.db.insert("orgSettings", {
+        key: "org",
+        lowStockThreshold: 15,
+        publicRequests: { kind: "open" },
+      });
+      await ctx.db.insert("titles", {
+        title: "Wild Greens, Beautiful Girl",
+        author:
+          "[Erica Lee Schlaikjer](https://www.amazon.com/Erica-Lee-Schlaikjer/e/B0D6V288LC/ref=dp_byline_cont_book_1)",
+        isbn: "978-1534113152",
+        quantityOnHand: 1,
+        activeReservedQuantity: 0,
+        reorderNeeded: false,
+      });
+    });
+    expect(await t.query(api.titles.listRequestable, {})).toEqual([
+      {
+        title: "Wild Greens, Beautiful Girl",
+        author: "Erica Lee Schlaikjer",
+        isbn: "9781534113152",
+        availableQuantity: 1,
+      },
+    ]);
+  });
+
   it("updates only catalog fields and returns the joined title workspace", async () => {
     const t = convexTest(schema, modules);
     await t.mutation(internal.staff.seedStaff, {

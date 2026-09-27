@@ -143,6 +143,36 @@ describe("Notion import", () => {
     ).rejects.toThrow("Imported visits are read-only");
   });
 
+  it("reuses an existing title when the import ISBN only differs by hyphens", async () => {
+    const { t, asStaff } = await createStaffTest();
+    const existingId = await t.run(async (ctx) =>
+      ctx.db.insert("titles", {
+        title: "The Great Banned Books Bake Sale",
+        author: "Aya Khalil",
+        isbn: "978-0823456386",
+        quantityOnHand: 1,
+        activeReservedQuantity: 0,
+        reorderNeeded: false,
+      }),
+    );
+    const hyphenated: ImportRow[] = [
+      {
+        kind: "title",
+        notionId: "title-bake",
+        title: "The Great Banned Books Bake Sale",
+        author: "Aya Khalil",
+        isbn: "9780823456386",
+      },
+    ];
+    await asStaff.mutation(api.migrations.notionImport.apply, {
+      rows: hyphenated,
+      expectedDigest: dryRunImport(hyphenated).digest,
+    });
+    const titles = await t.run(async (ctx) => ctx.db.query("titles").collect());
+    expect(titles).toHaveLength(1);
+    expect(titles[0]?._id).toBe(existingId);
+  });
+
   it("does not add an opening balance after a live stock movement", async () => {
     const { t, asStaff } = await createStaffTest();
     const historyRows = rows.filter((row) => row.kind !== "openingBalance");

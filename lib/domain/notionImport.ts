@@ -1,3 +1,4 @@
+import { catalogText, normalizeIsbn } from "./catalog";
 import { ROLES, type Role } from "./types";
 import { fingerprintOf, notionSourceId, type NotionSourceId } from "./intake";
 
@@ -68,6 +69,14 @@ function requiredText(value: unknown, label: string) {
     throw new Error(`${label} is required`);
   }
   return value.trim();
+}
+
+function isbnField(value: unknown) {
+  return normalizeIsbn(typeof value === "string" ? value : "");
+}
+
+function cleanedText(value: unknown) {
+  return catalogText(typeof value === "string" ? value : "");
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -202,23 +211,23 @@ export function parseImportRow(value: unknown, index = 0): ImportRow {
       return {
         kind: "title",
         notionId: textField(value.notionId),
-        title: textField(value.title),
-        author: textField(value.author),
-        isbn: textField(value.isbn),
+        title: cleanedText(value.title),
+        author: cleanedText(value.author),
+        isbn: isbnField(value.isbn),
       };
     case "review":
       return {
         kind: "review",
         notionId: textField(value.notionId),
-        isbn: textField(value.isbn),
-        reviewer: textField(value.reviewer),
+        isbn: isbnField(value.isbn),
+        reviewer: cleanedText(value.reviewer),
         score: numberField(value.score),
-        feedback: textField(value.feedback),
+        feedback: cleanedText(value.feedback),
       };
     case "openingBalance":
       return {
         kind: "openingBalance",
-        isbn: textField(value.isbn),
+        isbn: isbnField(value.isbn),
         quantity: numberField(value.quantity),
         reason: textField(value.reason) || "Physical count",
       };
@@ -232,7 +241,7 @@ export function parseImportRow(value: unknown, index = 0): ImportRow {
               }
               return [
                 {
-                  isbn: textField(line.isbn),
+                  isbn: isbnField(line.isbn),
                   quantity: numberField(line.quantity),
                 },
               ];
@@ -282,7 +291,7 @@ export function parseImportRow(value: unknown, index = 0): ImportRow {
               }
               return [
                 {
-                  isbn: textField(book.isbn),
+                  isbn: isbnField(book.isbn),
                   donatedQuantity: numberField(book.donatedQuantity),
                   readAloud: book.readAloud === true,
                 },
@@ -326,7 +335,7 @@ export function parseCountsCsv(text: string): ImportRow[] {
     return [
       {
         kind: "openingBalance" as const,
-        isbn: requiredText(cells[isbnIndex], "ISBN"),
+        isbn: isbnField(requiredText(cells[isbnIndex], "ISBN")),
         quantity: Number(cells[quantityIndex]),
         reason: "Physical count",
       },

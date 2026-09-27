@@ -9,6 +9,7 @@ import {
 import { appendInventoryMovement } from "./inventory";
 import { availableToRequest } from "./lib/availability";
 import { requireStaff } from "./lib/auth";
+import { findTitleByIsbn } from "./lib/catalog";
 import { positiveInteger, required } from "./lib/validation";
 import { matchSchool } from "../lib/domain/requests";
 import type { RequestStatus } from "../lib/domain/types";
@@ -114,22 +115,19 @@ export const internalSubmit = internalMutation({
       throw new Error("Choose at least one title");
     }
 
-    const isbns = new Set<string>();
+    const titleIds = new Set<string>();
     const preparedLines = await Promise.all(
       lines.map(async (line) => {
         const isbn = required(line.isbn, "ISBN");
         positiveInteger(line.quantity);
-        if (isbns.has(isbn)) {
-          throw new Error("A title can appear only once in a request");
-        }
-        isbns.add(isbn);
-        const title = await ctx.db
-          .query("titles")
-          .withIndex("by_isbn", (q) => q.eq("isbn", isbn))
-          .unique();
+        const title = await findTitleByIsbn(ctx, isbn);
         if (!title) {
           throw new Error("Title is not available");
         }
+        if (titleIds.has(title._id)) {
+          throw new Error("A title can appear only once in a request");
+        }
+        titleIds.add(title._id);
         if (
           line.quantity >
           availableToRequest(

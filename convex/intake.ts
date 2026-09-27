@@ -11,7 +11,9 @@ import {
 } from "./_generated/server";
 import { internal } from "./_generated/api";
 import { requireStaff } from "./lib/auth";
+import { findTitleByIsbn } from "./lib/catalog";
 import { required } from "./lib/validation";
+import { normalizeIsbn, stripNotionMarkdown } from "../lib/domain/catalog";
 import { matchSchool, normalizeSchool } from "../lib/domain/requests";
 import {
   assertFreshFingerprint,
@@ -92,8 +94,16 @@ async function catalogLookups(ctx: MutationCtx) {
     ctx.db.query("people").collect(),
   ]);
   return {
-    titleByIsbn: (isbn: string) =>
-      titles.find((title) => title.isbn === isbn)?._id ?? null,
+    titleByIsbn: (isbn: string) => {
+      const normalized = normalizeIsbn(isbn);
+      if (!normalized) {
+        return null;
+      }
+      return (
+        titles.find((title) => normalizeIsbn(title.isbn) === normalized)?._id ??
+        null
+      );
+    },
     titleByTitleText: (titleText: string) =>
       titles.find(
         (title) =>
@@ -504,7 +514,8 @@ function suggestionsFor(
     return titles
       .filter(
         (title) =>
-          title.isbn === candidate.isbn ||
+          (candidate.isbn !== undefined &&
+            normalizeIsbn(title.isbn) === normalizeIsbn(candidate.isbn)) ||
           (candidate.titleText !== undefined &&
             title.title.toLocaleLowerCase() ===
               candidate.titleText.toLocaleLowerCase()),
@@ -640,16 +651,24 @@ export const resolveItem = mutation({
         if (candidate.kind !== "review") {
           throw new Error("Create a title from a review item");
         }
-        const isbn = required(action.isbn, "ISBN");
-        const existing = await ctx.db
-          .query("titles")
-          .withIndex("by_isbn", (q) => q.eq("isbn", isbn))
-          .unique();
+        const isbn = normalizeIsbn(required(action.isbn, "ISBN"));
+        const title = stripNotionMarkdown(required(action.title, "Title"));
+        const author = stripNotionMarkdown(required(action.author, "Author"));
+        if (!isbn) {
+          throw new Error("ISBN is required");
+        }
+        if (!title) {
+          throw new Error("Title is required");
+        }
+        if (!author) {
+          throw new Error("Author is required");
+        }
+        const existing = await findTitleByIsbn(ctx, isbn);
         const titleId =
           existing?._id ??
           (await ctx.db.insert("titles", {
-            title: required(action.title, "Title"),
-            author: required(action.author, "Author"),
+            title,
+            author,
             isbn,
             quantityOnHand: 0,
             activeReservedQuantity: 0,

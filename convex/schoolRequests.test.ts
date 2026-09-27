@@ -87,6 +87,47 @@ describe("school requests", () => {
     ).rejects.toThrow("Public book requests are closed");
   });
 
+  it("matches a hyphenated request ISBN to a digit-only catalog ISBN", async () => {
+    const { t } = await createStaffTest();
+    await insertTitle(t, { isbn: "9780823456386", quantityOnHand: 4 });
+    const result = await t.mutation(
+      internal.schoolRequests.internalSubmit,
+      requestArgs({ isbn: "978-0823456386", quantity: 1 }),
+    );
+    expect(result.reference).toMatch(/^JFB-/);
+    const titles = await t.run(async (ctx) => ctx.db.query("titles").collect());
+    expect(titles[0]?.activeReservedQuantity).toBe(1);
+  });
+
+  it("matches a digit-only request ISBN to a hyphenated catalog ISBN", async () => {
+    const { t } = await createStaffTest();
+    await insertTitle(t, { isbn: "978-0823456386", quantityOnHand: 4 });
+    const result = await t.mutation(
+      internal.schoolRequests.internalSubmit,
+      requestArgs({ isbn: "9780823456386", quantity: 1 }),
+    );
+    expect(result.reference).toMatch(/^JFB-/);
+    const titles = await t.run(async (ctx) => ctx.db.query("titles").collect());
+    expect(titles[0]?.activeReservedQuantity).toBe(1);
+  });
+
+  it("treats hyphenated and digit ISBNs as the same request line", async () => {
+    const { t } = await createStaffTest();
+    await insertTitle(t, { isbn: "9780823456386", quantityOnHand: 4 });
+    await expect(
+      t.mutation(internal.schoolRequests.internalSubmit, {
+        schoolName: "Joy School",
+        address: "1 Main Street",
+        contactName: "Pat Reader",
+        email: "pat@example.com",
+        lines: [
+          { isbn: "978-0823456386", quantity: 1 },
+          { isbn: "9780823456386", quantity: 1 },
+        ],
+      }),
+    ).rejects.toThrow("A title can appear only once in a request");
+  });
+
   it("reserves copies and restores availability when declined", async () => {
     const { t, asStaff } = await createStaffTest();
     const titleId = await insertTitle(t, { notes: "Private note" });

@@ -9,6 +9,7 @@ import {
   type ImportRow,
 } from "../../lib/domain/notionImport";
 import { normalizeSchool } from "../../lib/domain/requests";
+import { findTitleByIsbn } from "../lib/catalog";
 import { appendInventoryMovement, writeOpeningBalance } from "../inventory";
 
 async function importedId(ctx: MutationCtx, sourceId: string) {
@@ -78,10 +79,7 @@ async function applyRows(
           break;
         }
         case "title": {
-          const existingTitle = await ctx.db
-            .query("titles")
-            .withIndex("by_isbn", (q) => q.eq("isbn", row.isbn))
-            .unique();
+          const existingTitle = await findTitleByIsbn(ctx, row.isbn);
           const id =
             existingTitle?._id ??
             (await ctx.db.insert("titles", {
@@ -97,10 +95,7 @@ async function applyRows(
           break;
         }
         case "review": {
-          const titleDoc = await ctx.db
-            .query("titles")
-            .withIndex("by_isbn", (q) => q.eq("isbn", row.isbn))
-            .unique();
+          const titleDoc = await findTitleByIsbn(ctx, row.isbn);
           if (!titleDoc) {
             throw new Error(`Title not found for review ${row.notionId}`);
           }
@@ -135,10 +130,7 @@ async function applyRows(
           });
           if (row.disposition.kind === "verifiedActive") {
             for (const line of row.disposition.lines) {
-              const titleDoc = await ctx.db
-                .query("titles")
-                .withIndex("by_isbn", (q) => q.eq("isbn", line.isbn))
-                .unique();
+              const titleDoc = await findTitleByIsbn(ctx, line.isbn);
               if (!titleDoc) {
                 throw new Error(`Title not found for request ${row.notionId}`);
               }
@@ -192,10 +184,7 @@ async function applyRows(
             });
           }
           for (const book of row.books) {
-            const titleDoc = await ctx.db
-              .query("titles")
-              .withIndex("by_isbn", (q) => q.eq("isbn", book.isbn))
-              .unique();
+            const titleDoc = await findTitleByIsbn(ctx, book.isbn);
             if (!titleDoc) {
               throw new Error(`Title not found for visit ${row.notionId}`);
             }
@@ -212,10 +201,7 @@ async function applyRows(
           break;
         }
         case "openingBalance": {
-          const titleDoc = await ctx.db
-            .query("titles")
-            .withIndex("by_isbn", (q) => q.eq("isbn", row.isbn))
-            .unique();
+          const titleDoc = await findTitleByIsbn(ctx, row.isbn);
           if (!titleDoc) {
             throw new Error(`Title not found for opening balance ${row.isbn}`);
           }
