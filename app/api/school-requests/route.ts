@@ -1,5 +1,9 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
+import {
+  consumeSchoolRequestAttempt,
+  schoolRequestClientKey,
+} from "@/lib/schoolRequestRateLimit";
 
 const lineSchema = z.object({
   isbn: z.string().min(1),
@@ -103,6 +107,19 @@ export async function POST(request: Request) {
   }
   if (parsed.data.website) {
     return NextResponse.json({ reference: "JFB-RECEIVED" });
+  }
+
+  const rate = consumeSchoolRequestAttempt(schoolRequestClientKey(request));
+  if (!rate.allowed) {
+    return NextResponse.json(
+      {
+        error: "Please wait a few minutes before submitting another request.",
+      },
+      {
+        status: 429,
+        headers: { "Retry-After": String(rate.retryAfterSeconds) },
+      },
+    );
   }
 
   const siteUrl = convexSiteUrl();
