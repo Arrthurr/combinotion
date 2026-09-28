@@ -13,6 +13,10 @@ import {
   type PopularityView,
   type SortDirection,
 } from "@/lib/domain/reports";
+import {
+  popularityPdfFilename,
+  renderPopularityReportPdf,
+} from "@/lib/exports/popularity-report";
 
 const convexConfigured = Boolean(process.env.NEXT_PUBLIC_CONVEX_URL);
 
@@ -37,9 +41,14 @@ function PopularityReportFallback() {
         Filter by title or author
         <input disabled type="search" />
       </label>
-      <button className="button" disabled>
-        Export visible rows as CSV
-      </button>
+      <div className="row">
+        <button className="button" disabled>
+          Export visible rows as CSV
+        </button>
+        <button className="button" disabled>
+          Export visible rows as PDF
+        </button>
+      </div>
       <p className="muted" role="status">
         Connect Convex to load popularity data.
       </p>
@@ -128,15 +137,33 @@ function PopularityReportLive() {
     }));
   }
 
-  function downloadCsv() {
-    const url = URL.createObjectURL(
-      new Blob([popularityCsv(visible)], { type: "text/csv;charset=utf-8" }),
-    );
+  function downloadFile(blob: Blob, fileName: string) {
+    const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
-    link.download = "book-popularity.csv";
+    link.download = fileName;
     link.click();
     URL.revokeObjectURL(url);
+  }
+
+  function downloadCsv() {
+    downloadFile(
+      new Blob([popularityCsv(visible)], { type: "text/csv;charset=utf-8" }),
+      "book-popularity.csv",
+    );
+  }
+
+  async function downloadPdf() {
+    const bytes = await renderPopularityReportPdf({
+      rows: visible,
+      view,
+    });
+    const buffer = new ArrayBuffer(bytes.byteLength);
+    new Uint8Array(buffer).set(bytes);
+    downloadFile(
+      new Blob([buffer], { type: "application/pdf" }),
+      popularityPdfFilename,
+    );
   }
 
   return (
@@ -207,6 +234,16 @@ function PopularityReportLive() {
           onClick={downloadCsv}
         >
           Export visible rows as CSV
+        </button>
+        <button
+          className="button"
+          disabled={rows === undefined}
+          type="button"
+          onClick={() => {
+            void downloadPdf();
+          }}
+        >
+          Export visible rows as PDF
         </button>
         <p className="muted" role="status" aria-live="polite">
           {rows === undefined

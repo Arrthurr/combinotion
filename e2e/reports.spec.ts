@@ -33,6 +33,9 @@ test("unconfigured review and report fallbacks keep labelled controls", async ({
   await expect(
     page.getByRole("button", { name: "Export visible rows as CSV" }),
   ).toBeDisabled();
+  await expect(
+    page.getByRole("button", { name: "Export visible rows as PDF" }),
+  ).toBeDisabled();
 
   await page.goto("/reviews");
   await expect(

@@ -103,6 +103,10 @@ Do this after cutover and any time the shelf and the app disagree. Notion is not
 
 A clean reconcile means every live title’s on-hand matches the shelf (or a reasoned ledger adjustment), and exception queues are empty or explicitly owned by staff.
 
+## Book popularity export
+
+Staff can download the currently filtered and sorted Book popularity rows as CSV or PDF from **Book popularity**. Both files use the same visible rows: title, author, request count, donated copies, and average rubric score. The PDF is the shareable copy for ordering conversations; CSV remains the spreadsheet path. Empty scores show as blank in CSV and as “No reviews” in the PDF.
+
 ## Routine work
 
 - Book reviews are a purchase signal. A submitted review is recorded even when that book is not in inventory. Incoming forms should not wait for a catalog match before accepting a review.

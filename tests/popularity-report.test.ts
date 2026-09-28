@@ -1,3 +1,5 @@
+import { inflateSync } from "node:zlib";
+import { PDFDocument } from "pdf-lib";
 import { describe, expect, it } from "vitest";
 import {
   POPULARITY_COLUMNS,
@@ -6,6 +8,31 @@ import {
   visiblePopularityRows,
   type PopularityRow,
 } from "@/lib/domain/reports";
+import {
+  popularityPdfFilename,
+  popularityPdfSummary,
+  renderPopularityReportPdf,
+} from "@/lib/exports/popularity-report";
+
+function pdfShownText(bytes: Uint8Array) {
+  const source = Buffer.from(bytes).toString("latin1");
+  return [...source.matchAll(/stream\r?\n([\s\S]*?)\r?\nendstream/g)]
+    .flatMap((match) => {
+      try {
+        return inflateSync(Buffer.from(match[1] ?? "", "latin1")).toString(
+          "latin1",
+        );
+      } catch {
+        return "";
+      }
+    })
+    .flatMap((content) =>
+      [...content.matchAll(/<([0-9A-Fa-f]+)> Tj/g)].map((match) =>
+        Buffer.from(match[1] ?? "", "hex").toString("latin1"),
+      ),
+    )
+    .join("\n");
+}
 
 const rows: PopularityRow[] = [
   {
@@ -193,5 +220,77 @@ describe("book popularity", () => {
         '"Alpha","Zed","2","4","3"',
       ].join("\n"),
     );
+  });
+
+  it("summarizes the current sort and filters for a shareable PDF", () => {
+    expect(
+      popularityPdfSummary(
+        {
+          filter: {
+            text: "joy",
+            min: { donatedQuantity: 4, averageScore: 3 },
+          },
+          sort: { column: "donatedQuantity", direction: "desc" },
+        },
+        2,
+      ),
+    ).toEqual([
+      "Sorted by Donated copies, descending",
+      "Filters: Title or author contains “joy”; Minimum donated copies: 4; Minimum average rubric score: 3",
+      "2 titles",
+    ]);
+    expect(
+      popularityPdfSummary(
+        { filter: {}, sort: { column: "title", direction: "asc" } },
+        1,
+      ),
+    ).toEqual(["Sorted by Title, ascending", "No filters applied", "1 title"]);
+  });
+
+  it("renders a loadable PDF of the supplied visible rows and paginates long reports", async () => {
+    const visible = visiblePopularityRows(rows, {
+      filter: { min: { donatedQuantity: 4 } },
+      sort: { column: "donatedQuantity", direction: "desc" },
+    });
+    const bytes = await renderPopularityReportPdf({
+      rows: visible,
+      view: {
+        filter: { min: { donatedQuantity: 4 } },
+        sort: { column: "donatedQuantity", direction: "desc" },
+      },
+      generatedAt: Date.UTC(2026, 8, 28),
+    });
+    const document = await PDFDocument.load(bytes);
+
+    const pageText = pdfShownText(bytes);
+    expect(new TextDecoder().decode(bytes.slice(0, 4))).toBe("%PDF");
+    expect(document.getTitle()).toBe("Book popularity report");
+    expect(document.getPageCount()).toBe(1);
+    expect(pageText).toContain("Sorted by Donated copies, descending");
+    expect(pageText).toContain("Minimum donated copies: 4");
+    expect(pageText).toContain("Gamma");
+    expect(pageText).toContain("Alpha");
+    expect(pageText).not.toContain("Beta");
+    expect(pageText).toContain("No reviews");
+    expect(popularityPdfFilename).toBe("book-popularity.pdf");
+
+    const manyRows = Array.from({ length: 80 }, (_, index) => ({
+      titleId: `title-${index}`,
+      title: `Title ${index + 1} that needs wrapping in the shareable table`,
+      author: `Author ${index + 1}`,
+      requestCount: index,
+      donatedQuantity: index * 2,
+      averageScore: index % 3 === 0 ? null : index / 10,
+    }));
+    const longBytes = await renderPopularityReportPdf({
+      rows: manyRows,
+      view: {
+        filter: {},
+        sort: { column: "requestCount", direction: "desc" },
+      },
+    });
+    const longDocument = await PDFDocument.load(longBytes);
+    expect(longDocument.getPageCount()).toBeGreaterThan(1);
+    expect(longBytes.byteLength).toBeGreaterThan(1_000);
   });
 });
