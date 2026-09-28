@@ -45,4 +45,6 @@ npx tsx scripts/import-notion.ts --export notion.json --counts counts.csv
 
 ## Cut over to production
 
-Staff pages need a Clerk session. Seed each trusted identity with `staff:seedStaff` as shown in the [launch and maintenance guide](docs/operations/launch-and-maintenance.md). Public requests stay paused until staff open them there.
+Staff pages need a Clerk session. Seed each trusted identity with `staff:seedStaff` as shown in the [launch and maintenance guide](docs/operations/launch-and-maintenance.md).
+
+Production public requests are open on `/request-books`. New deployments still default to paused: reconcile shelf counts with the inventory ledger first, then open (or hold closed again) under Settings → Operating controls. The launch guide covers reconcile steps and how to close requests.

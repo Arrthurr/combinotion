@@ -1,6 +1,6 @@
 # Launch and maintenance
 
-Public requests stay closed until you open them in Operations settings. That is deliberate. Cut over inventory first, then flip the hold.
+Public book requests are **open** in production (`ops.joyforbooks.org`). Schools see live availability on `/request-books` and can submit reservations. New environments still default to paused until staff open them after inventory cutover.
 
 ## Hosting
 
@@ -67,15 +67,43 @@ Apply pins to that digest. If you edit the files, run dry-run again. Replay is s
 
 4. Historical visits are read-only and do not move stock. Opening balances come from the physical count only, one keep-first movement per title. If the same apply writes a `verifiedActive` reservation for a title and then an opening balance for that title, the opening balance is rejected. Put counts on after titles and before active requests, or apply counts first and active requests in a second run.
 
-## Reconcile, then open requests
+## Public requests (open / hold)
 
-Walk every title against the physical count. Check Incoming forms, stale active requests, and reservation exceptions.
+Production requests are open. To change that gate:
 
-When the counts match, open public requests in Operations settings. Until then the public page lists no titles and submissions return a closed error.
+1. Sign in as staff and open **Settings**.
+2. Under **Operating controls → Public book requests**, choose **Open** or **Held closed**.
+3. When holding closed, set an optional **Hold message** (default copy is “Public book requests are closed”).
+4. Save operating controls.
+
+While held closed, `/request-books` lists no titles and school submissions return HTTP 503 with the hold message. While open, the page lists every title with available-to-request quantity greater than zero.
+
+### Close requests again
+
+Use **Held closed** whenever you need a freeze (physical recount, shortage cleanup, or a deliberate pause). Save, then confirm `/request-books` shows the hold message and no available titles. Re-open only after the reconcile checklist below is clean.
+
+## Reconcile shelf counts with the ledger
+
+Do this after cutover and any time the shelf and the app disagree. Notion is not the count source.
+
+1. Walk the physical shelf. For each title, write `isbn,quantity` (same shape as launch `counts.csv`).
+2. Open **Inventory**. For every live title, compare **On hand** to the shelf quantity.
+   - Match: no write.
+   - First-time zero stock with no movements: **Record opening balance** with reason (for example `2026-09-27 shelf count`).
+   - Any other drift: **Correct on-hand quantity** with a reasoned note (for example `2026-09-27 shelf recount; missing 2 copies`). That appends an `adjustment` movement; do not invent stock outside the ledger.
+3. Clear or own exceptions before trusting availability:
+   - **Inventory → Shortage exceptions** (on hand below active reservations).
+   - **Requests → Request exceptions** (unmatched / ambiguous school attach, reservation shortage).
+   - **Requests → Active requests** (stale actives you still mean to fulfill, cancel, or decline).
+   - **Visits → Visit exceptions** (ambiguous reservation consumption).
+4. Spot-check `/request-books`: available copies must equal on hand minus active reservations for each title. Titles with zero availability stay off the public list.
+
+A clean reconcile means every live title’s on-hand matches the shelf (or a reasoned ledger adjustment), and exception queues are empty or explicitly owned by staff.
 
 ## Routine work
 
 - Book reviews are a purchase signal. A submitted review is recorded even when that book is not in inventory. Incoming forms should not wait for a catalog match before accepting a review.
 - Pending intake and failed sheet polls belong on Incoming forms and Settings. Do not wait for an engineer to notice a 403.
 - Reservation shortages stay visible until you release or fulfill the affected request.
+- Notion remains a read-only archive after cutover. Nothing in this app writes back to Notion; do not re-enable Notion as an operational store.
 - Operational records are kept. Do not paste service-account JSON, raw form dumps, or Notion MCP exports into chat, tickets, or recap emails.
