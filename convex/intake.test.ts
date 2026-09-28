@@ -380,12 +380,108 @@ describe("intake", () => {
     ]);
   });
 
-  it("reports missing Google credentials on feed health", async () => {
+  it("creates people from unmatched donation applications in bulk", async () => {
+    const { t, asStaff } = await createStaffTest();
+    const feedId = await asStaff.mutation(api.intake.saveFeedConfig, {
+      kind: "donationApplications",
+      spreadsheetId: "sheet-donations",
+      tabName: "Responses",
+      mapping: donationMapping,
+    });
+    await t.run(async (ctx) => {
+      await ctx.db.insert("intakeItems", {
+        feedId,
+        sourceId: "sheets:donationApplications:sheet-donations:Responses:bulk",
+        fingerprint: "bulk-donation",
+        receivedAt: Date.now(),
+        state: {
+          kind: "pending",
+          candidate: {
+            kind: "donationApplication",
+            name: "Ada Donor",
+            email: "ada@example.com",
+            schoolName: "New School",
+            schoolAddress: "2 Oak Street",
+          },
+        },
+      });
+    });
+    expect(await asStaff.mutation(api.intake.createPendingDonations, {})).toEqual(
+      {
+        created: 1,
+        attached: 0,
+        failures: 0,
+      },
+    );
+    expect(await asStaff.query(api.intake.listItems, { state: "pending" })).toEqual(
+      [],
+    );
+    expect(await asStaff.query(api.people.listPeople, {})).toEqual([
+      expect.objectContaining({
+        name: "Ada Donor",
+        email: "ada@example.com",
+      }),
+    ]);
+  });
+
+  it("reprocesses invalid review rows after header casing is fixed", async () => {
+    const { t, asStaff } = await createStaffTest();
+    const feedId = await asStaff.mutation(api.intake.saveFeedConfig, {
+      kind: "bookReviews",
+      spreadsheetId: "sheet-reviews",
+      tabName: "Responses",
+      mapping: {
+        identityColumns: ["Timestamp", "Your name", "Book Title"],
+        reviewerColumn: "Your name",
+        scoreColumn: "Story Engagement",
+        feedbackColumn: "Notes for this section",
+        titleTextColumn: "Book Title",
+      },
+    });
+    const headers = [
+      "Timestamp",
+      "Your name",
+      "Book title",
+      "Story Engagement",
+      "Notes for this section",
+    ];
+    const cells = ["2026-08-01", "Pat", "Bing's Cherries", "4", "Loved it"];
+    await t.run(async (ctx) => {
+      await ctx.db.insert("intakeItems", {
+        feedId,
+        sourceId: "sheets:bookReviews:sheet-reviews:Responses:stale-invalid",
+        fingerprint: fingerprintOf({ headers, cells }),
+        receivedAt: Date.now(),
+        rawValues: JSON.stringify(cells),
+        state: {
+          kind: "invalid",
+          errors: ["Missing identity column Book Title", "ISBN or title is required"],
+        },
+      });
+    });
+    expect(
+      await t.mutation(internal.intake.workDownIntakeBacklog, { limit: 50 }),
+    ).toEqual({
+      invalid: { reparsed: 1, stillInvalid: 0, failures: 0 },
+      reviews: { accepted: 0, failures: 0 },
+      donations: { created: 0, attached: 0, failures: 0 },
+      counts: { pending: 0, invalid: 0, resolved: 1 },
+    });
+    expect(await asStaff.query(api.reviews.list, {})).toEqual([
+      expect.objectContaining({
+        title: "Bing's Cherries",
+        reviewer: "Pat",
+        inInventory: false,
+      }),
+    ]);
+  });
+
+  it("reports feed health before a sheet is approved", async () => {
     const { asStaff } = await createStaffTest();
     const health = await asStaff.query(api.intake.listHealth, {});
-    expect(health.map((feed) => feed.message)).toEqual([
-      "Google credentials are missing",
-      "Google credentials are missing",
-    ]);
+    const expected = process.env.GOOGLE_SERVICE_ACCOUNT_JSON?.trim()
+      ? "Approve a sheet, tab, and mapping"
+      : "Google credentials are missing";
+    expect(health.map((feed) => feed.message)).toEqual([expected, expected]);
   });
 });

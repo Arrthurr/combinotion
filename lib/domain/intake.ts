@@ -122,8 +122,23 @@ export function fingerprintOf(value: unknown): string {
   return JSON.stringify(value);
 }
 
+function headerIndex(headers: string[], column: string) {
+  const exact = headers.indexOf(column);
+  if (exact !== -1) {
+    return exact;
+  }
+  const wanted = column.trim().toLocaleLowerCase();
+  return headers.findIndex(
+    (header) => header.trim().toLocaleLowerCase() === wanted,
+  );
+}
+
+function hasHeader(headers: string[], column: string) {
+  return headerIndex(headers, column) !== -1;
+}
+
 function cell(headers: string[], cells: string[], column: string) {
-  const index = headers.indexOf(column);
+  const index = headerIndex(headers, column);
   if (index === -1) {
     return undefined;
   }
@@ -165,7 +180,7 @@ export function parseRow(
 ): ParsedRow {
   const identityColumns = feed.mapping.identityColumns;
   const missingIdentity = identityColumns.filter(
-    (column) => !headers.includes(column),
+    (column) => !hasHeader(headers, column),
   );
   const rawValues = JSON.stringify(cells);
   const errors: string[] = missingIdentity.map(
