@@ -156,26 +156,28 @@ function OperationsSettingsLive() {
             defaultValue={settings?.lowStockThreshold ?? 15}
           />
         </label>
-        <fieldset>
+        <fieldset className="stack">
           <legend>Public book requests</legend>
-          <label>
-            <input
-              name="publicRequests"
-              type="radio"
-              value="paused"
-              defaultChecked={settings?.publicRequests.kind !== "open"}
-            />
-            Held closed
-          </label>
-          <label>
-            <input
-              name="publicRequests"
-              type="radio"
-              value="open"
-              defaultChecked={settings?.publicRequests.kind === "open"}
-            />
-            Open
-          </label>
+          <div className="row">
+            <label>
+              <input
+                name="publicRequests"
+                type="radio"
+                value="paused"
+                defaultChecked={settings?.publicRequests.kind !== "open"}
+              />
+              Held closed
+            </label>
+            <label>
+              <input
+                name="publicRequests"
+                type="radio"
+                value="open"
+                defaultChecked={settings?.publicRequests.kind === "open"}
+              />
+              Open
+            </label>
+          </div>
           <label>
             Hold message
             <input
