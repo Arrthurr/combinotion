@@ -6,6 +6,10 @@ import {
   publicRequestsHoldMessage,
   type PublicRequests,
 } from "../lib/domain/orgSettings";
+import {
+  SCHOOL_REQUEST_RATE_LIMIT_MESSAGE,
+  schoolRequestRateLimitKeyFromEmail,
+} from "../lib/schoolRequestRateLimit";
 
 const requestSchema = z.object({
   schoolName: z.string().min(2),
@@ -23,10 +27,14 @@ const requestSchema = z.object({
   idempotencyKey: z.string().min(1).optional(),
 });
 
-function json(body: object, status: number) {
+function json(
+  body: object,
+  status: number,
+  extraHeaders?: Record<string, string>,
+) {
   return new Response(JSON.stringify(body), {
     status,
-    headers: { "content-type": "application/json" },
+    headers: { "content-type": "application/json", ...extraHeaders },
   });
 }
 
@@ -60,6 +68,19 @@ http.route({
         return closed;
       }
       const body = requestSchema.parse(await request.json());
+      const rate = await ctx.runMutation(
+        internal.schoolRequests.internalConsumeRateLimit,
+        {
+          clientKey: schoolRequestRateLimitKeyFromEmail(body.email),
+        },
+      );
+      if (!rate.allowed) {
+        return json(
+          { error: SCHOOL_REQUEST_RATE_LIMIT_MESSAGE },
+          429,
+          { "Retry-After": String(rate.retryAfterSeconds) },
+        );
+      }
       const result = await ctx.runMutation(
         internal.schoolRequests.internalSubmit,
         body,

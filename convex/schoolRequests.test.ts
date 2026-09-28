@@ -358,6 +358,7 @@ describe("school requests", () => {
   it("keeps submission internal and protects staff operations", async () => {
     const t = convexTest(schema, modules);
     expect("internalSubmit" in api.schoolRequests).toBe(false);
+    expect("internalConsumeRateLimit" in api.schoolRequests).toBe(false);
     await t.run(async (ctx) => {
       await ctx.db.insert("orgSettings", {
         key: "org",
@@ -430,6 +431,52 @@ describe("school requests", () => {
     expect(await response.json()).toEqual({
       error: "Hold until the count is done",
     });
+  });
+
+  it("rejects repeated HTTP submissions from one email without blocking another", async () => {
+    vi.stubEnv("SCHOOL_REQUEST_SHARED_SECRET", "secret");
+    const { t } = await createStaffTest();
+    await insertTitle(t, { quantityOnHand: 20 });
+    const headers = {
+      "content-type": "application/json",
+      "x-school-request-secret": "secret",
+    };
+    const body = requestArgs({ quantity: 1 });
+
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      const allowed = await t.fetch("/school-requests", {
+        method: "POST",
+        headers,
+        body: JSON.stringify(body),
+      });
+      expect(allowed.status).toBe(201);
+    }
+
+    const limited = await t.fetch("/school-requests", {
+      method: "POST",
+      headers,
+      body: JSON.stringify(body),
+    });
+    expect(limited.status).toBe(429);
+    expect(limited.headers.get("Retry-After")).toMatch(/^[1-9]\d*$/);
+    expect(await limited.json()).toEqual({
+      error: "Please wait a few minutes before submitting another request.",
+    });
+
+    const otherEmail = await t.fetch("/school-requests", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        ...requestArgs({ quantity: 1 }),
+        email: "other@example.com",
+      }),
+    });
+    expect(otherEmail.status).toBe(201);
+
+    const stored = await t.run(async (ctx) =>
+      ctx.db.query("schoolRequests").collect(),
+    );
+    expect(stored).toHaveLength(6);
   });
 
   it("keeps the anonymous title projection minimal", async () => {

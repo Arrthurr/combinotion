@@ -1,5 +1,7 @@
-const MAX_ATTEMPTS = 5;
-const WINDOW_MS = 10 * 60 * 1000;
+export const SCHOOL_REQUEST_RATE_MAX_ATTEMPTS = 5;
+export const SCHOOL_REQUEST_RATE_WINDOW_MS = 10 * 60 * 1000;
+export const SCHOOL_REQUEST_RATE_LIMIT_MESSAGE =
+  "Please wait a few minutes before submitting another request.";
 
 const attemptsByClient = new Map<string, number[]>();
 
@@ -19,21 +21,44 @@ export function schoolRequestClientKey(request: Request) {
   return realIp || "unknown";
 }
 
+export function schoolRequestRateLimitKeyFromEmail(email: string) {
+  return `email:${email.trim().toLowerCase()}`;
+}
+
+export function recentSchoolRequestAttempts(
+  attempts: number[],
+  now: number,
+) {
+  const windowStart = now - SCHOOL_REQUEST_RATE_WINDOW_MS;
+  return attempts.filter((timestamp) => timestamp > windowStart);
+}
+
+export function schoolRequestRetryAfterSeconds(
+  oldestAttemptAt: number,
+  now: number,
+) {
+  return Math.max(
+    1,
+    Math.ceil(
+      (oldestAttemptAt + SCHOOL_REQUEST_RATE_WINDOW_MS - now) / 1000,
+    ),
+  );
+}
+
 export function consumeSchoolRequestAttempt(
   clientKey: string,
   now = Date.now(),
 ): { allowed: true } | { allowed: false; retryAfterSeconds: number } {
-  const windowStart = now - WINDOW_MS;
-  const recent = (attemptsByClient.get(clientKey) ?? []).filter(
-    (timestamp) => timestamp > windowStart,
+  const recent = recentSchoolRequestAttempts(
+    attemptsByClient.get(clientKey) ?? [],
+    now,
   );
-  if (recent.length >= MAX_ATTEMPTS) {
+  if (recent.length >= SCHOOL_REQUEST_RATE_MAX_ATTEMPTS) {
     attemptsByClient.set(clientKey, recent);
-    const retryAfterSeconds = Math.max(
-      1,
-      Math.ceil((recent[0]! + WINDOW_MS - now) / 1000),
-    );
-    return { allowed: false, retryAfterSeconds };
+    return {
+      allowed: false,
+      retryAfterSeconds: schoolRequestRetryAfterSeconds(recent[0]!, now),
+    };
   }
   recent.push(now);
   attemptsByClient.set(clientKey, recent);

@@ -178,6 +178,45 @@ describe("school request route", () => {
     expect(fetchMock).toHaveBeenCalledTimes(6);
   });
 
+  it("forwards a Convex 429 when a different IP shares an email", async () => {
+    vi.stubEnv(
+      "NEXT_PUBLIC_CONVEX_SITE_URL",
+      "https://example.convex.site",
+    );
+    vi.stubEnv("SCHOOL_REQUEST_SHARED_SECRET", "server-secret");
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          error: "Please wait a few minutes before submitting another request.",
+        }),
+        {
+          status: 429,
+          headers: {
+            "content-type": "application/json",
+            "Retry-After": "540",
+          },
+        },
+      ),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const response = await POST(
+      request(
+        {
+          ...contact,
+          lines: [{ isbn: "1", quantity: 2 }],
+        },
+        "203.0.113.30",
+      ),
+    );
+
+    expect(response.status).toBe(429);
+    expect(response.headers.get("Retry-After")).toBe("540");
+    expect(await response.json()).toEqual({
+      error: "Please wait a few minutes before submitting another request.",
+    });
+  });
+
   it("allows another attempt after the rate-limit window", () => {
     const client = "school-a";
     const startedAt = 1_000_000;

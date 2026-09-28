@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import {
   consumeSchoolRequestAttempt,
+  SCHOOL_REQUEST_RATE_LIMIT_MESSAGE,
   schoolRequestClientKey,
 } from "@/lib/schoolRequestRateLimit";
 
@@ -112,9 +113,7 @@ export async function POST(request: Request) {
   const rate = consumeSchoolRequestAttempt(schoolRequestClientKey(request));
   if (!rate.allowed) {
     return NextResponse.json(
-      {
-        error: "Please wait a few minutes before submitting another request.",
-      },
+      { error: SCHOOL_REQUEST_RATE_LIMIT_MESSAGE },
       {
         status: 429,
         headers: { "Retry-After": String(rate.retryAfterSeconds) },
@@ -173,12 +172,19 @@ export async function POST(request: Request) {
       (response.status === 400 ||
         response.status === 403 ||
         response.status === 409 ||
+        response.status === 429 ||
         response.status === 503) &&
       "error" in payload.data
     ) {
+      const retryAfter = response.headers.get("Retry-After");
       return NextResponse.json(
         { error: payload.data.error },
-        { status: response.status },
+        {
+          status: response.status,
+          ...(response.status === 429 && retryAfter
+            ? { headers: { "Retry-After": retryAfter } }
+            : {}),
+        },
       );
     }
     return requestServiceUnavailable();

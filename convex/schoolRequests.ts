@@ -15,6 +15,11 @@ import { matchSchool } from "../lib/domain/requests";
 import type { RequestStatus } from "../lib/domain/types";
 import { loadOrgSettings } from "./orgSettings";
 import { assertPublicRequestsOpen } from "../lib/domain/orgSettings";
+import {
+  recentSchoolRequestAttempts,
+  SCHOOL_REQUEST_RATE_MAX_ATTEMPTS,
+  schoolRequestRetryAfterSeconds,
+} from "../lib/schoolRequestRateLimit";
 
 const referenceAlphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 
@@ -233,6 +238,40 @@ export const listExceptions = query({
       (request) =>
         request.matchStatus !== "attached" || request.hasShortage,
     );
+  },
+});
+
+export const internalConsumeRateLimit = internalMutation({
+  args: { clientKey: v.string() },
+  handler: async (ctx, { clientKey }) => {
+    const now = Date.now();
+    const existing = await ctx.db
+      .query("schoolRequestRateLimits")
+      .withIndex("by_clientKey", (q) => q.eq("clientKey", clientKey))
+      .unique();
+    const recent = recentSchoolRequestAttempts(
+      existing?.attempts ?? [],
+      now,
+    );
+    if (recent.length >= SCHOOL_REQUEST_RATE_MAX_ATTEMPTS) {
+      if (existing) {
+        await ctx.db.patch(existing._id, { attempts: recent });
+      }
+      return {
+        allowed: false as const,
+        retryAfterSeconds: schoolRequestRetryAfterSeconds(recent[0]!, now),
+      };
+    }
+    recent.push(now);
+    if (existing) {
+      await ctx.db.patch(existing._id, { attempts: recent });
+    } else {
+      await ctx.db.insert("schoolRequestRateLimits", {
+        clientKey,
+        attempts: recent,
+      });
+    }
+    return { allowed: true as const };
   },
 });
 

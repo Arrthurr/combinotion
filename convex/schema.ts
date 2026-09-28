@@ -49,6 +49,10 @@ export default defineSchema({
     .index("by_status_created", ["status", "createdAt"])
     .index("by_school_status", ["schoolId", "status"])
     .index("by_idempotencyKey", ["idempotencyKey"]),
+  schoolRequestRateLimits: defineTable({
+    clientKey: v.string(),
+    attempts: v.array(v.number()),
+  }).index("by_clientKey", ["clientKey"]),
   reservations: defineTable({
     titleId: v.id("titles"),
     schoolRequestId: v.id("schoolRequests"),
