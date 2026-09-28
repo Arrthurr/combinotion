@@ -95,6 +95,40 @@ describe("Google Sheets intake", () => {
     expect(parsed.outcome.kind).toBe("invalid");
   });
 
+  it("matches mapped columns case-insensitively", () => {
+    const parsed = parseRow(
+      {
+        ...reviewFeed,
+        mapping: {
+          identityColumns: ["Timestamp", "Your name", "Book Title"],
+          reviewerColumn: "Your name",
+          scoreColumn: "Story Engagement",
+          feedbackColumn: "Notes for this section",
+          titleTextColumn: "Book Title",
+        },
+      },
+      [
+        "Timestamp",
+        "Your name",
+        "Book title",
+        "Story Engagement",
+        "Notes for this section",
+      ],
+      ["2026-08-01", "Pat", "Bing's Cherries", "4", "Loved it"],
+    );
+    expect(parsed.outcome).toEqual({
+      kind: "candidate",
+      candidate: {
+        kind: "review",
+        reviewer: "Pat",
+        score: 4,
+        feedback: "Loved it",
+        titleText: "Bing's Cherries",
+      },
+    });
+    expect(parsed.sourceId).toContain("Bing's Cherries");
+  });
+
   it("does not duplicate a replayed or reordered row", () => {
     const first = parseRow(reviewFeed, reviewHeaders, [
       "2026-08-01",

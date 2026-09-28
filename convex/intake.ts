@@ -22,6 +22,7 @@ import {
   intakeRetentionDays,
   matchCandidate,
   nextPurgeState,
+  parseRow,
   planRow,
   redactError,
   type FeedHealth,
@@ -703,36 +704,243 @@ export const resolveItem = mutation({
   },
 });
 
+async function acceptPendingReviewItems(
+  ctx: MutationCtx,
+  limit: number | undefined,
+) {
+  const items = await ctx.db.query("intakeItems").collect();
+  const max = limit ?? 200;
+  let accepted = 0;
+  let failures = 0;
+  for (const item of items) {
+    if (accepted >= max) {
+      break;
+    }
+    if (item.state.kind !== "pending") {
+      continue;
+    }
+    if (item.state.candidate.kind !== "review") {
+      continue;
+    }
+    try {
+      const state = await applyAutoMatch(ctx, item.state.candidate);
+      if (state.kind !== "resolved") {
+        continue;
+      }
+      await ctx.db.patch(item._id, { state });
+      accepted += 1;
+    } catch {
+      failures += 1;
+    }
+  }
+  return { accepted, failures };
+}
+
+async function createPendingDonationItems(
+  ctx: MutationCtx,
+  limit: number | undefined,
+) {
+  const items = await ctx.db.query("intakeItems").collect();
+  const max = limit ?? 200;
+  let created = 0;
+  let attached = 0;
+  let failures = 0;
+  for (const item of items) {
+    if (created + attached >= max) {
+      break;
+    }
+    if (item.state.kind !== "pending") {
+      continue;
+    }
+    const candidate = item.state.candidate;
+    if (candidate.kind !== "donationApplication") {
+      continue;
+    }
+    try {
+      const matched = await applyAutoMatch(ctx, candidate);
+      if (matched.kind === "resolved") {
+        await ctx.db.patch(item._id, { state: matched });
+        attached += 1;
+        continue;
+      }
+      const personId = await ctx.db.insert("people", {
+        name: required(candidate.name, "Name"),
+        ...(candidate.email?.trim() ? { email: candidate.email.trim() } : {}),
+        roles: ["donor"],
+      });
+      if (candidate.schoolName && candidate.schoolAddress) {
+        const schools = await ctx.db.query("schools").collect();
+        const existingSchool = matchSchool({
+          name: candidate.schoolName,
+          address: candidate.schoolAddress,
+          schools: schools.map((school) => ({
+            id: school._id,
+            normalizedName: school.normalizedName,
+            normalizedAddress: school.normalizedAddress,
+          })),
+        });
+        const schoolId =
+          existingSchool.matchStatus === "attached"
+            ? (existingSchool.schoolId as Id<"schools">)
+            : await ctx.db.insert("schools", {
+                name: candidate.schoolName.trim(),
+                address: candidate.schoolAddress.trim(),
+                normalizedName: normalizeSchool(candidate.schoolName),
+                normalizedAddress: normalizeSchool(candidate.schoolAddress),
+              });
+        await ctx.db.insert("schoolContacts", {
+          schoolId,
+          personId,
+        });
+      }
+      await ctx.db.patch(item._id, {
+        state: {
+          kind: "resolved",
+          candidate,
+          resolution: {
+            kind: "createdRecord",
+            record: { kind: "person", id: personId },
+          },
+          resolvedAt: Date.now(),
+          sourceDrift: false,
+        },
+      });
+      created += 1;
+    } catch {
+      failures += 1;
+    }
+  }
+  return { created, attached, failures };
+}
+
+function headersAndCellsFromInvalid(item: Doc<"intakeItems">) {
+  if (item.state.kind !== "invalid") {
+    return null;
+  }
+  try {
+    const parsed: unknown = JSON.parse(item.fingerprint);
+    if (
+      typeof parsed !== "object" ||
+      parsed === null ||
+      !("headers" in parsed) ||
+      !("cells" in parsed) ||
+      !Array.isArray(parsed.headers) ||
+      !Array.isArray(parsed.cells)
+    ) {
+      return null;
+    }
+    return {
+      headers: parsed.headers.map((header) => String(header)),
+      cells: parsed.cells.map((cell) => String(cell ?? "")),
+    };
+  } catch {
+    return null;
+  }
+}
+
+async function reprocessInvalidIntakeItems(
+  ctx: MutationCtx,
+  limit: number | undefined,
+) {
+  const items = await ctx.db.query("intakeItems").collect();
+  const feeds = await ctx.db.query("intakeFeeds").collect();
+  const feedById = new Map(feeds.map((feed) => [feed._id, feed]));
+  const max = limit ?? 200;
+  let reparsed = 0;
+  let stillInvalid = 0;
+  let failures = 0;
+  for (const item of items) {
+    if (reparsed + stillInvalid >= max) {
+      break;
+    }
+    if (item.state.kind !== "invalid") {
+      continue;
+    }
+    const feed = feedById.get(item.feedId);
+    if (!feed) {
+      failures += 1;
+      continue;
+    }
+    const recovered = headersAndCellsFromInvalid(item);
+    if (!recovered) {
+      failures += 1;
+      continue;
+    }
+    try {
+      const row = parseRow(
+        {
+          kind: feed.kind,
+          mapping: feed.mapping,
+          spreadsheetId: feed.spreadsheetId,
+          tabName: feed.tabName,
+        },
+        recovered.headers,
+        recovered.cells,
+      );
+      const existingBySource = await ctx.db
+        .query("intakeItems")
+        .withIndex("by_source", (q) => q.eq("sourceId", row.sourceId))
+        .unique();
+      if (existingBySource && existingBySource._id !== item._id) {
+        // A later poll already stored the corrected source id. Drop the stale invalid copy.
+        await ctx.db.delete(item._id);
+        reparsed += 1;
+        continue;
+      }
+      if (row.outcome.kind === "invalid") {
+        await ctx.db.patch(item._id, {
+          sourceId: row.sourceId,
+          fingerprint: row.fingerprint,
+          rawValues: row.rawValues,
+          state: { kind: "invalid", errors: row.outcome.errors },
+        });
+        stillInvalid += 1;
+        continue;
+      }
+      const state = await applyAutoMatch(ctx, row.outcome.candidate);
+      await ctx.db.patch(item._id, {
+        sourceId: row.sourceId,
+        fingerprint: row.fingerprint,
+        rawValues: row.rawValues,
+        state,
+      });
+      reparsed += 1;
+    } catch {
+      failures += 1;
+    }
+  }
+  return { reparsed, stillInvalid, failures };
+}
+
 export const acceptPendingReviews = mutation({
   args: { limit: v.optional(v.number()) },
   handler: async (ctx, { limit }) => {
     await requireStaff(ctx);
-    const items = await ctx.db.query("intakeItems").collect();
-    const max = limit ?? 15;
-    let accepted = 0;
-    let failures = 0;
-    for (const item of items) {
-      if (accepted >= max) {
-        break;
-      }
-      if (item.state.kind !== "pending") {
-        continue;
-      }
-      if (item.state.candidate.kind !== "review") {
-        continue;
-      }
-      try {
-        const state = await applyAutoMatch(ctx, item.state.candidate);
-        if (state.kind !== "resolved") {
-          continue;
-        }
-        await ctx.db.patch(item._id, { state });
-        accepted += 1;
-      } catch {
-        failures += 1;
-      }
+    return await acceptPendingReviewItems(ctx, limit);
+  },
+});
+
+export const createPendingDonations = mutation({
+  args: { limit: v.optional(v.number()) },
+  handler: async (ctx, { limit }) => {
+    await requireStaff(ctx);
+    return await createPendingDonationItems(ctx, limit);
+  },
+});
+
+/** Ops: `npx convex run intake:workDownIntakeBacklog --prod` */
+export const workDownIntakeBacklog = internalMutation({
+  args: { limit: v.optional(v.number()) },
+  handler: async (ctx, { limit }) => {
+    const invalid = await reprocessInvalidIntakeItems(ctx, limit);
+    const reviews = await acceptPendingReviewItems(ctx, limit);
+    const donations = await createPendingDonationItems(ctx, limit);
+    const remaining = await ctx.db.query("intakeItems").collect();
+    const counts = { pending: 0, invalid: 0, resolved: 0 };
+    for (const item of remaining) {
+      counts[item.state.kind] += 1;
     }
-    return { accepted, failures };
+    return { invalid, reviews, donations, counts };
   },
 });
 

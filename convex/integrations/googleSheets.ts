@@ -146,9 +146,12 @@ export const verifyFeed = internalAction({
     const requiredColumns = Object.values(feed.mapping).flatMap((value) =>
       Array.isArray(value) ? value : value ? [value] : [],
     );
-    const missing = requiredColumns.filter(
-      (column) => !tab.headers.includes(column),
-    );
+    const missing = requiredColumns.filter((column) => {
+      const wanted = column.trim().toLocaleLowerCase();
+      return !tab.headers.some(
+        (header) => header.trim().toLocaleLowerCase() === wanted,
+      );
+    });
     if (missing.length > 0) {
       throw new Error(`Missing mapped columns: ${missing.join(", ")}`);
     }

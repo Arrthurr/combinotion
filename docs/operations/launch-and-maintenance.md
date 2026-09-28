@@ -18,6 +18,7 @@ The env vars hold credentials only. Feeds do not start because a sheet id is pre
 4. In Settings, save the spreadsheet id, tab name, and column mapping for book reviews and donation applications.
 5. Use Verify and enable. The app checks that the account can read the tab and that mapped headers exist. A missing grant or a renamed column fails in place. It does not silently disable polling later without a visible last-poll error.
 6. Convex polls enabled feeds every 15 minutes. Incoming forms shows pending, invalid, and resolved rows. Unmatched rows stay until you attach them, create the missing record, or dismiss them.
+7. After a first-time poll that imported full Form history, clear the backlog with `npx convex run intake:workDownIntakeBacklog --prod`. That re-parses invalid rows (including header casing drift), accepts leftover book reviews without inventing catalog titles, and creates people (and schools when both name and city/address are present) from pending donation applications. New polls still only add unmatched new rows; failed last-poll errors stay on Settings / Incoming forms.
 
 Rotate the service account key when someone leaves or a sheet is unshared. Revoke the old key in Google Cloud, then replace `GOOGLE_SERVICE_ACCOUNT_JSON`. Raw form payloads are dropped after 180 days. The CRM record and the intake outcome stay.
 
