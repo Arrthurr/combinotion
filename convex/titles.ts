@@ -5,8 +5,10 @@ import {
   query,
   type MutationCtx,
 } from "./_generated/server";
+import { catalogText, normalizeIsbn, stripNotionMarkdown } from "../lib/domain/catalog";
 import { availableToRequest } from "./lib/availability";
 import { requireStaff } from "./lib/auth";
+import { findTitleByIsbn } from "./lib/catalog";
 import { required } from "./lib/validation";
 import { reviewState } from "../lib/domain/inventory";
 import { isPublicRequestsOpen, orgThreshold } from "../lib/domain/orgSettings";
@@ -30,8 +32,22 @@ const optionalCatalogValidators = {
 };
 
 function optionalText(value: string | undefined) {
+  const cleaned = value === undefined ? "" : catalogText(value);
+  return cleaned ? cleaned : undefined;
+}
+
+function optionalUrl(value: string | undefined) {
   const trimmed = value?.trim();
   return trimmed ? trimmed : undefined;
+}
+
+function catalogIdentity(args: { title: string; author: string; isbn: string }) {
+  const title = stripNotionMarkdown(required(args.title, "Title"));
+  const author = stripNotionMarkdown(required(args.author, "Author"));
+  const isbn = normalizeIsbn(required(args.isbn, "ISBN"));
+  if (!title) throw new Error("Title is required");
+  if (!author) throw new Error("Author is required");
+  return { title, author, isbn };
 }
 
 async function validatedSupplierIds(
@@ -135,9 +151,9 @@ export type TitleWorkspace = {
 export const projectRequestable = (titles: TitleProjection[]) =>
   titles
     .map((title): RequestableTitle => ({
-      title: title.title,
-      author: title.author,
-      isbn: title.isbn,
+      title: stripNotionMarkdown(title.title),
+      author: stripNotionMarkdown(title.author),
+      isbn: normalizeIsbn(title.isbn) || title.isbn,
       availableQuantity: availableToRequest(
         title.quantityOnHand,
         title.activeReservedQuantity,
@@ -155,16 +171,15 @@ export const createTitle = mutation({
   },
   handler: async (ctx, args) => {
     await requireStaff(ctx);
-    const title = required(args.title, "Title");
-    const author = required(args.author, "Author");
-    const isbn = required(args.isbn, "ISBN");
+    const { title, author, isbn } = catalogIdentity(args);
+    if (!isbn) throw new Error("ISBN is required");
     const synopsis = optionalText(args.synopsis);
     const notes = optionalText(args.notes);
-    const coverUrl = optionalText(args.coverUrl);
+    const coverUrl = optionalUrl(args.coverUrl);
     const purchaseInfo = optionalText(args.purchaseInfo);
     const supplierIds = await validatedSupplierIds(ctx, args.supplierIds);
     validateEnrichmentSource(args.enrichmentSource);
-    const existing = await ctx.db.query("titles").withIndex("by_isbn", (q) => q.eq("isbn", isbn)).unique();
+    const existing = await findTitleByIsbn(ctx, isbn);
     if (existing) throw new Error("A title with this ISBN already exists");
     return await ctx.db.insert("titles", {
       title,
@@ -198,13 +213,9 @@ export const updateTitle = mutation({
     if (!(await ctx.db.get(args.titleId))) {
       throw new Error("Title not found");
     }
-    const title = required(args.title, "Title");
-    const author = required(args.author, "Author");
-    const isbn = required(args.isbn, "ISBN");
-    const existing = await ctx.db
-      .query("titles")
-      .withIndex("by_isbn", (q) => q.eq("isbn", isbn))
-      .unique();
+    const { title, author, isbn } = catalogIdentity(args);
+    if (!isbn) throw new Error("ISBN is required");
+    const existing = await findTitleByIsbn(ctx, isbn);
     if (existing && existing._id !== args.titleId) {
       throw new Error("A title with this ISBN already exists");
     }
@@ -216,7 +227,7 @@ export const updateTitle = mutation({
       isbn,
       synopsis: optionalText(args.synopsis),
       notes: optionalText(args.notes),
-      coverUrl: optionalText(args.coverUrl),
+      coverUrl: optionalUrl(args.coverUrl),
       purchaseInfo: optionalText(args.purchaseInfo),
       supplierIds,
       ...(args.enrichmentSource === undefined

@@ -40,7 +40,7 @@ Notion is a read-only archive after cutover. Nothing writes back. The app does n
 npx tsx scripts/export-notion.ts --dump dump.json --out notion.json
 ```
 
-The mapper writes `{ "rows": [ ... ] }` using the import kinds in `lib/domain/notionImport.ts`. It uses Notion page ids for `notionId`, `schoolNotionId`, `staffNotionIds`, and `readerNotionIds`, and the printed ISBN for every title, review, and visit book. Those ISBN strings must match exactly. People, schools, and titles come before the visits and requests that reference them. Omitted schools lack any city/state, visit street, or request city. Omitted visits lack a resolvable title.
+The mapper writes `{ "rows": [ ... ] }` using the import kinds in `lib/domain/notionImport.ts`. It uses Notion page ids for `notionId`, `schoolNotionId`, `staffNotionIds`, and `readerNotionIds`, and a digit-only ISBN for every title, review, and visit book. Hyphens and spaces are stripped so a second import cannot create a duplicate title. Author and catalog copy drop Notion markdown links. People, schools, and titles come before the visits and requests that reference them. Omitted schools lack any city/state, visit street, or request city. Omitted visits lack a resolvable title.
 5. Export the launch-day physical count yourself as `counts.csv` with `isbn,quantity` columns. That file comes from the shelf, not from Notion.
 
 Treat the mapped `notion.json` as untrusted until the dry-run and a spot-check pass. Notion MCP returns whatever the connected account can see, including emails. Do not paste that dump into chat, tickets, or recap emails.
@@ -63,7 +63,9 @@ The script prints invalid rows and a preview digest. It writes nothing to Convex
 npx tsx scripts/import-notion.ts --export notion.json --counts counts.csv --apply
 ```
 
-Apply pins to that digest. If you edit the files, run dry-run again. Replay is safe. Source ids are kept, so a second apply will not add a second opening balance or a second historical visit.
+Apply pins to that digest. If you edit the files, run dry-run again. Replay is safe. Source ids are kept, so a second apply will not add a second opening balance or a second historical visit. Title matching uses the digit-only ISBN, so a hyphenated reprint of an already-imported title is reused instead of inserted twice.
+
+If live titles still show markdown authors or mixed ISBN punctuation, rewrite them in place with `npx convex run migrations/rewriteCatalog:rewriteCatalog --prod`. That command refuses to run when two titles would collapse onto the same ISBN.
 
 4. Historical visits are read-only and do not move stock. Opening balances come from the physical count only, one keep-first movement per title. If the same apply writes a `verifiedActive` reservation for a title and then an opening balance for that title, the opening balance is rejected. Put counts on after titles and before active requests, or apply counts first and active requests in a second run.
 

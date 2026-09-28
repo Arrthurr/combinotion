@@ -55,7 +55,7 @@ describe("Notion import", () => {
   });
 
   it("parses a physical count into opening-balance rows", () => {
-    expect(parseCountsCsv("isbn,quantity\n9780000000001,12\n")).toEqual([
+    expect(parseCountsCsv("isbn,quantity\n978-0000000001,12\n")).toEqual([
       {
         kind: "openingBalance",
         isbn: "9780000000001",
@@ -63,6 +63,25 @@ describe("Notion import", () => {
         reason: "Physical count",
       },
     ]);
+  });
+
+  it("strips Notion markdown and hyphenated ISBNs on parse", () => {
+    expect(
+      parseImportRow({
+        kind: "title",
+        notionId: "title-3",
+        title: "**Hands**",
+        author:
+          "[Aya Khalil](https://www.amazon.com/Aya-Khalil/e/B07XWRSCJX)",
+        isbn: "978-0823456386",
+      }),
+    ).toEqual({
+      kind: "title",
+      notionId: "title-3",
+      title: "Hands",
+      author: "Aya Khalil",
+      isbn: "9780823456386",
+    });
   });
 
   it("rejects an export that is not a rows document", () => {

@@ -1,3 +1,4 @@
+import { normalizeIsbn, stripNotionMarkdown } from "./catalog";
 import type { Role } from "./types";
 import type { ImportRow } from "./notionImport";
 
@@ -36,7 +37,7 @@ function text(value: unknown) {
   if (typeof value !== "string") {
     return "";
   }
-  return value.replace(/\*+/g, "").trim();
+  return stripNotionMarkdown(value);
 }
 
 function pageIdFromUrl(value: unknown) {
@@ -189,7 +190,7 @@ function reviewScore(value: unknown) {
 }
 
 function isbnOf(value: unknown) {
-  return text(value).replace(/\s+/g, "");
+  return normalizeIsbn(text(value));
 }
 
 function uniqueByNotionId<T extends { notionId: string }>(rows: T[]) {
