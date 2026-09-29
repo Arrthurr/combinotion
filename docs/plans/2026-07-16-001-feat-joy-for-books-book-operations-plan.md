@@ -28,7 +28,7 @@ deepened: 2026-07-16
 
 Build a custom web application centered on book titles and title-level inventory.
 Each title brings together its catalog identity, stock, suppliers, orders, receipts, school requests, reviews, and school-visit history; people, schools, and visits remain important connected records.
-A public school-request page, linked from Squarespace, lets schools reserve in-stock donation titles without exposing the staff CRM.
+A public school-request page lets schools reserve in-stock donation titles without exposing the staff CRM. Referral is a COO-picked targeted email, not a Squarespace CTA. Squarespace remains the fundraising storefront and the `/freebooks` classroom-shipping application; it must not change Commerce checkout. (2026-09-29: Squarespace *can* still link without the Commerce API — that stays a constraint, not a launch step.)
 
 ### Problem Frame
 
@@ -57,7 +57,7 @@ When that context is fragmented, purchase and donation decisions depend on unrel
 - A4. **Reader:** Person participating in a school visit; does not sign in.
 - A5. **Reviewer:** Person submitting a book review; does not sign in.
 - A6. **Supplier:** Distributor from which the organization orders books.
-- A7. **Squarespace storefront:** Public fundraising storefront and referral point for the custom school-request page; it is not a CRM data source.
+- A7. **Squarespace storefront:** Public fundraising storefront and `/freebooks` classroom-shipping application. It is not a CRM data source and is not the referral point for combinotion reservations.
 - A8. **Google Forms and linked Sheets:** External source of donation applications and book reviews.
 
 ### Requirements
@@ -135,8 +135,8 @@ When that context is fragmented, purchase and donation decisions depend on unrel
   - **Covered by:** R9, R10, R12.
 
 - F3. **Submit a school book request**
-  - **Trigger:** A school representative follows the request link from Squarespace.
-  - **Actors:** A3, A7.
+  - **Trigger:** A school representative follows the request link from a COO-picked email.
+  - **Actors:** A3.
   - **Steps:** View the live list of requestable titles; select available quantities; provide normalized school name, address, and contact details; submit the request.
   - **Outcome:** The school request and its reservations are recorded atomically, and the next representative sees reduced availability.
   - **Covered by:** R19, R20, R31, R35.
@@ -194,7 +194,7 @@ When that context is fragmented, purchase and donation decisions depend on unrel
 
 ### Dependencies / Assumptions
 
-- Squarespace can host a clear call-to-action linking school representatives to the custom request page, without using its Commerce API.
+- Squarespace can host a link to the custom request page without using its Commerce API. Combinotion does not use that link: referral is targeted email after `/freebooks` is closed. The constraint remains so fundraising checkout stays untouched.
 - Google Form submissions can be read from their linked Google Sheets without manual export.
 - An ISBN lookup source can supply catalog metadata for at least many titles; the operator can complete or correct missing data.
 - The COO can provide clean Notion exports and a launch-date physical inventory count.
@@ -232,7 +232,7 @@ This is a confirmed product change, not a technical substitution: Squarespace fu
 - KTD1. **Use Next.js on Vercel, Clerk, and Convex as one hosted application boundary.** Next.js supplies both the staff interface and the public request route; Clerk controls staff identity; Convex owns operational state and mutations. This matches the user’s selected stack and keeps inventory transactions close to their consistency boundary.
 - KTD2. **Model stock as an append-only operational ledger plus a transactionally maintained title projection.** Receipts, manual adjustments, visit donations, reservations, releases, and automatic reservation consumption create traceable movements. The projection exposes `quantityOnHand`, active reserved quantity, and available-to-request quantity so the UI never edits a counter in isolation.
 - KTD3. **Keep request reservations separate from physical depletion while consuming unambiguous matches automatically.** A successful public request reserves stock immediately, but only a school-visit donation changes quantity-on-hand. A visit consumes an active reservation only when school and title matching are unambiguous; otherwise the COO resolves the exception. (session-settled: user-approved — chosen over approval-time reservation: the school’s submitted request must reserve copies immediately.)
-- KTD4. **Use a custom public request page and retain Squarespace only for fundraising commerce.** The request page is linked from Squarespace and reads the live requestable-title list from Convex. No Squarespace Commerce orders, product updates, or inventory sync enter the CRM. (session-settled: user-approved — chosen over an API-backed Squarespace request feed: Core-plan access is unavailable and fundraising commerce must remain unchanged.)
+- KTD4. **Use a custom public request page and retain Squarespace only for fundraising commerce.** The request page is unlisted and reached from a COO-picked email; it reads the live requestable-title list from Convex. No Squarespace Commerce orders, product updates, or inventory sync enter the CRM. Squarespace *can* still link without the Commerce API — that is a constraint, not a launch step. (session-settled: user-approved — chosen over an API-backed Squarespace request feed: Core-plan access is unavailable and fundraising commerce must remain unchanged.)
 - KTD5. **Use Convex scheduled actions for Google Sheets intake with durable source identity and idempotency.** Use a COO-owned, least-privilege Google integration identity shared read-only with approved Sheets; store source row identity, a payload fingerprint, processing state, and the resulting record or pending item. Credentials live only in managed environment configuration, with documented rotation, revocation, and redacted logs.
 - KTD6. **Treat ISBN lookup as a best-effort enrichment, never a catalog authority.** Query Open Library on ISBN entry, preserve the returned source metadata for traceability, and require the operator to confirm or edit every field before saving.
 - KTD7. **Enforce staff membership in backend functions as well as the web route shell.** Clerk protects staff navigation, while a Convex allowlist of approved Clerk identities gates every staff-facing query and mutation. Public reads return only requestable-title data; the Vercel route calls the protected Convex submission surface with a managed server-to-server secret, so direct public mutation calls are rejected.
@@ -244,7 +244,8 @@ The diagram is a planning model rather than an endpoint or schema specification.
 
 ```mermaid
 flowchart TB
-  Square[Squarespace fundraising storefront] -->|school-request link| Public[Public school-request page]
+  Square[Squarespace fundraising storefront]
+  Email[COO-picked school email] -->|unlisted /request-books| Public[Public school-request page]
   Public -->|eligible titles and validated submission| Convex[Convex operational domain]
   Staff[Authenticated staff workspace] -->|Clerk identity| Convex
   Convex --> Ledger[Title ledger and stock projection]
@@ -338,7 +339,7 @@ Deploy only after the production domain, Clerk configuration, Google authorizati
 - **Files:** `app/request-books/page.tsx`, `app/api/school-requests/route.ts`, `components/requests/request-form.tsx`, `components/requests/requestable-title-list.tsx`, `convex/schoolRequests.ts`, `convex/http.ts`, `convex/lib/availability.ts`, `app/(staff)/requests/page.tsx`, `tests/school-request-reservations.test.ts`, `e2e/public-request.spec.ts`.
 - **Approach:** Serve a minimal public projection of requestable titles and send submissions through a validated Vercel route to one atomic Convex operation protected by a server-to-server secret. Normalize school name and address to attach an existing school automatically; make uncertain matches visible to the COO. Create reservation movements and provide an age-sorted active-request queue with cancellation, decline, and exception resolution.
 - **Test scenarios:** Out-of-stock and fully reserved titles never appear publicly; a successful request lowers availability but not on-hand stock; two competing submissions cannot over-reserve; cancellation restores availability; a matching normalized school attaches automatically; direct calls without the server credential are rejected; loading, validation, concurrent-unavailability, duplicate-submit, success-reference, and release-feedback states are accessible and clear.
-- **Verification:** Run unit concurrency coverage and browser tests from the public form through staff confirmation; manually confirm Squarespace can link to the custom route without altering its fundraising checkout.
+- **Verification:** Run unit concurrency coverage and browser tests from the public form through staff confirmation; confirm fundraising checkout is unchanged and that combinotion is not advertised on Squarespace.
 
 ### U5. Deliver the book-centered staff workspace and flexible views
 
@@ -391,7 +392,7 @@ Deploy only after the production domain, Clerk configuration, Google authorizati
 | Browser tests | `npm run test:e2e` | U1, U4-U7 | Public request, staff workspace, views, visit entry, and reporting paths pass in a browser. |
 | Convex integration | `npx convex dev` with test deployment | U2-U8 | Schema, Clerk identity, scheduled intake, and transactional mutations work against Convex. |
 | Migration rehearsal | Dry-run then staging import from representative Notion exports | U8 | Invalid records are reported, totals reconcile, and the import can be rerun without duplicate operational movements. |
-| Production readiness | Vercel preview then custom-domain production validation | U1, U8 | Clerk works on the real domain; Squarespace link reaches the request page; no fundraising inventory or checkout behavior changes. |
+| Production readiness | Vercel preview then custom-domain production validation | U1, U8 | Clerk works on the real domain; `/request-books` is unlisted and noindexed; no fundraising inventory or checkout behavior changes. |
 
 The executor must add the named package scripts as part of U1 and keep the above commands accurate if the chosen test runner requires an equivalent invocation.
 

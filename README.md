@@ -47,4 +47,4 @@ npx tsx scripts/import-notion.ts --export notion.json --counts counts.csv
 
 Staff pages need a Clerk session. Seed each trusted identity with `staff:seedStaff` as shown in the [launch and maintenance guide](docs/operations/launch-and-maintenance.md).
 
-Production public requests are open on `/request-books`. New deployments still default to paused: reconcile shelf counts with the inventory ledger first, then open (or hold closed again) under Settings → Operating controls. The launch guide covers reconcile steps and how to close requests.
+`/request-books` is an unlisted public path for school-visit reservations. Do not put it on Squarespace; `/freebooks` is a different program (classroom shipping application). While that cycle is open, hold combinotion closed. New deployments still default to paused: reconcile shelf counts with the inventory ledger first, then open (or hold closed again) under Settings → Operating controls. The [launch and maintenance guide](docs/operations/launch-and-maintenance.md) covers the freeze, the email template, reconcile steps, and how to close requests.

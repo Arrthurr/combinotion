@@ -1,6 +1,12 @@
 # Launch and maintenance
 
-Public book requests are **open** in production (`ops.joyforbooks.org`). Schools see live availability on `/request-books` and can submit reservations. New environments still default to paused until staff open them after inventory cutover.
+`ops.joyforbooks.org` is the staff app. `/` sends staff to sign-in (signed-in staff go to `/books`). School-visit reservations live at `/request-books`: a public, unlisted path. The origin is noindexed. Do not advertise it on Squarespace, social, or a CRM dump.
+
+That page is **not** the classroom-shipping application on [joyforbooks.org/freebooks](https://www.joyforbooks.org/freebooks). `/freebooks` is a need-based Google Form (U8 donation-application intake). Selected educators get shipped books. Combinotion reservations are for schools the COO already visits.
+
+**Standing rule:** whenever the `/freebooks` cycle is open, hold combinotion **Held closed** and do not email `/request-books`. Overlapping “get books” paths is the bug.
+
+New environments still default to paused until staff open them after inventory cutover.
 
 ## Hosting
 
@@ -72,7 +78,9 @@ If live titles still show markdown authors or mixed ISBN punctuation, rewrite th
 
 ## Public requests (open / hold)
 
-Production requests are open. To change that gate:
+`/request-books` is reached from a COO-picked email, not from Squarespace. Squarespace stays on fundraising checkout and on `/freebooks`. Do not add a combinotion CTA there.
+
+To change the reservation gate:
 
 1. Sign in as staff and open **Settings**.
 2. Under **Operating controls → Public book requests**, choose **Open** or **Held closed**.
@@ -81,9 +89,24 @@ Production requests are open. To change that gate:
 
 While held closed, `/request-books` lists no titles and school submissions return HTTP 503 with the hold message. While open, the page lists every title with available-to-request quantity greater than zero.
 
+### This freeze (2026-09-29, while `/freebooks` is still open)
+
+1. **Held closed** now. Hold message (one-off, not the code default): **School visit reservations are paused.**
+2. After 2026-09-30, **in this order:** close `/freebooks` on Squarespace (copy = cycle closed; Form CTA off or “applications closed”) → email known visit schools the COO picks (not a school-table export) using the template below → **Open** public requests.
+
+### Email template
+
+Subject: Book reservations for your school visit
+
+Body:
+
+We’re opening title reservations for schools we visit. This is not the classroom application on joyforbooks.org/freebooks (that cycle is closed; we do not ship a 10-book classroom set from this link).
+
+Open https://ops.joyforbooks.org/request-books — submitting reserves copies for your visit. Reply if the school name or address is wrong.
+
 ### Close requests again
 
-Use **Held closed** whenever you need a freeze (physical recount, shortage cleanup, or a deliberate pause). Save, then confirm `/request-books` shows the hold message and no available titles. Re-open only after the reconcile checklist below is clean.
+Use **Held closed** whenever you need a freeze (physical recount, shortage cleanup, a `/freebooks` application cycle, or a deliberate pause). Save, then confirm `/request-books` shows the hold message and no available titles. Re-open only after the reconcile checklist below is clean **and** `/freebooks` is not in an open cycle.
 
 ## Reconcile shelf counts with the ledger
 

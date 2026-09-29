@@ -1,7 +1,6 @@
 import { ConvexHttpClient } from "convex/browser";
 import { Suspense } from "react";
-import { ArrowLeft, BookOpen } from "lucide-react";
-import Link from "next/link";
+import { BookOpen } from "lucide-react";
 import { api } from "@/convex/_generated/api";
 import { RequestableTitleList } from "@/components/requests/requestable-title-list";
 import type { RequestableTitle } from "@/convex/titles";
@@ -42,11 +41,10 @@ export default function RequestBooksPage() {
   return (
     <main id="content" className="request-page stack">
       <nav className="public-nav" aria-label="Request page navigation">
-        <Link className="brand brand-dark" href="/">
+        <span className="brand brand-dark">
           <span className="brand-mark" aria-hidden="true"><BookOpen size={21} /></span>
           <span><strong>Joy for Books</strong><small>School requests</small></span>
-        </Link>
-        <Link className="text-link" href="/"><ArrowLeft size={16} /> Back home</Link>
+        </span>
       </nav>
       <div className="page-intro">
         <p className="eyebrow">For Arizona schools</p>

@@ -10,6 +10,7 @@ const inter = Inter({
 export const metadata = {
   title: "Joy for Books",
   description: "Thoughtful book operations for stronger school communities",
+  robots: { index: false, follow: true },
 };
 
 export default function RootLayout({
