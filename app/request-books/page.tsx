@@ -1,5 +1,7 @@
 import { ConvexHttpClient } from "convex/browser";
 import { Suspense } from "react";
+import { ArrowLeft, BookOpen } from "lucide-react";
+import Link from "next/link";
 import { api } from "@/convex/_generated/api";
 import { RequestableTitleList } from "@/components/requests/requestable-title-list";
 import type { RequestableTitle } from "@/convex/titles";
@@ -38,13 +40,20 @@ async function RequestableBooks() {
 
 export default function RequestBooksPage() {
   return (
-    <main id="content" className="stack">
-      <div>
-        <p className="muted">For schools</p>
+    <main id="content" className="request-page stack">
+      <nav className="public-nav" aria-label="Request page navigation">
+        <Link className="brand brand-dark" href="/">
+          <span className="brand-mark" aria-hidden="true"><BookOpen size={21} /></span>
+          <span><strong>Joy for Books</strong><small>School requests</small></span>
+        </Link>
+        <Link className="text-link" href="/"><ArrowLeft size={16} /> Back home</Link>
+      </nav>
+      <div className="page-intro">
+        <p className="eyebrow">For Arizona schools</p>
         <h1>Request books</h1>
         <p>
-          Choose titles that are currently available. Submitting this form
-          reserves copies. It does not change fundraising-store inventory.
+          Choose from the titles currently on our shelves. Submitting a request
+          reserves copies for your school.
         </p>
       </div>
       <Suspense
