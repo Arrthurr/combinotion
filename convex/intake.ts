@@ -105,11 +105,18 @@ async function catalogLookups(ctx: MutationCtx) {
         null
       );
     },
-    titleByTitleText: (titleText: string) =>
-      titles.find(
+    titleByTitleText: (titleText: string) => {
+      const normalized = stripNotionMarkdown(titleText).toLocaleLowerCase();
+      if (!normalized) {
+        return null;
+      }
+      const matches = titles.filter(
         (title) =>
-          title.title.toLocaleLowerCase() === titleText.toLocaleLowerCase(),
-      )?._id ?? null,
+          stripNotionMarkdown(title.title).toLocaleLowerCase() ===
+          normalized,
+      );
+      return matches.length === 1 ? matches[0]._id : null;
+    },
     personByEmail: (email: string) =>
       people.find(
         (person) => person.email?.toLocaleLowerCase() === email.toLocaleLowerCase(),

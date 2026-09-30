@@ -175,7 +175,7 @@ describe("intake", () => {
     ]);
   });
 
-  it("links a review to inventory when the reviewed title already exists", async () => {
+  it("falls back from an unknown ISBN to cleaned, case-insensitive title text", async () => {
     const { t, asStaff } = await createStaffTest();
     const titleId = await asStaff.mutation(api.titles.createTitle, {
       title: "Known Book",
@@ -202,7 +202,8 @@ describe("intake", () => {
               reviewer: "Rae",
               score: 3,
               feedback: "Useful in class",
-              titleText: "Known Book",
+              isbn: "9780000000999",
+              titleText: "  [**KNOWN**](https://example.org)   book  ",
             },
           },
         },
@@ -221,12 +222,73 @@ describe("intake", () => {
     ]);
   });
 
-  it("auto-applies a review whose ISBN already exists", async () => {
+  it("leaves ambiguous title-text matches unlinked but lets an ISBN identify an edition", async () => {
     const { t, asStaff } = await createStaffTest();
     await asStaff.mutation(api.titles.createTitle, {
       title: "Known Book",
       author: "Ann",
+      isbn: "9780000000100",
+    });
+    const secondTitleId = await asStaff.mutation(api.titles.createTitle, {
+      title: "KNOWN BOOK",
+      author: "Bea",
+      isbn: "9780000000200",
+    });
+    const feedId = await asStaff.mutation(api.intake.saveFeedConfig, {
+      kind: "bookReviews",
+      spreadsheetId: "sheet-reviews",
+      tabName: "Responses",
+      mapping: reviewMapping,
+    });
+    for (const [reviewer, isbn] of [
+      ["Unknown ISBN", "9780000000999"],
+      ["No ISBN", undefined],
+      ["Known ISBN", "978-0000000200"],
+    ] as const) {
+      await t.mutation(internal.intake.recordRows, {
+        feedId,
+        rows: [{
+          sourceId: `sheets:bookReviews:sheet-reviews:Responses:${reviewer}`,
+          fingerprint: reviewer,
+          rawValues: "[]",
+          outcome: {
+            kind: "candidate",
+            candidate: {
+              kind: "review",
+              reviewer,
+              score: 4,
+              feedback: "Useful in class",
+              titleText: "**Known**   Book",
+              ...(isbn ? { isbn } : {}),
+            },
+          },
+        }],
+      });
+    }
+    const reviews = await asStaff.query(api.reviews.list, {});
+    expect(reviews).toHaveLength(3);
+    for (const reviewer of ["Unknown ISBN", "No ISBN"]) {
+      const review = reviews.find((entry) => entry.reviewer === reviewer);
+      expect(review).toMatchObject({ inInventory: false });
+      expect(review).not.toHaveProperty("titleId");
+    }
+    expect(reviews.find((entry) => entry.reviewer === "Known ISBN")).toMatchObject({
+      titleId: secondTitleId,
+      inInventory: true,
+    });
+  });
+
+  it("prefers the ISBN match over a conflicting unique title-text match", async () => {
+    const { t, asStaff } = await createStaffTest();
+    const titleId = await asStaff.mutation(api.titles.createTitle, {
+      title: "Known Book",
+      author: "Ann",
       isbn: "9780000000001",
+    });
+    await asStaff.mutation(api.titles.createTitle, {
+      title: "Other Book",
+      author: "Bea",
+      isbn: "9780000000002",
     });
     const feedId = await asStaff.mutation(api.intake.saveFeedConfig, {
       kind: "bookReviews",
@@ -249,6 +311,7 @@ describe("intake", () => {
               score: 4,
               feedback: "Loved it",
               isbn: "9780000000001",
+              titleText: "Other Book",
             },
           },
         },
@@ -258,6 +321,7 @@ describe("intake", () => {
     expect(items[0]?.state.kind).toBe("resolved");
     const reviews = await asStaff.query(api.reviews.list, {});
     expect(reviews).toHaveLength(1);
+    expect(reviews[0]).toMatchObject({ titleId, inInventory: true });
   });
 
   it("rejects a stale resolve fingerprint", async () => {
