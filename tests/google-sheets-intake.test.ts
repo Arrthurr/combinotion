@@ -4,9 +4,7 @@ import {
   assertUniqueSourceIds,
   feedHealth,
   fingerprintOf,
-  intakeRetentionDays,
   matchCandidate,
-  nextPurgeState,
   parseRow,
   planRow,
   redactError,
@@ -306,26 +304,6 @@ describe("Google Sheets intake", () => {
     expect(() =>
       assertFreshFingerprint(fingerprintOf("a"), fingerprintOf("b")),
     ).toThrow("changed after you opened it");
-  });
-
-  it("drops raw payload after 180 days and keeps the rest", () => {
-    const receivedAt = 0;
-    const now = (intakeRetentionDays + 1) * 24 * 60 * 60 * 1000;
-    expect(
-      nextPurgeState(
-        {
-          sourceId: "sheets:bookReviews:sheet:tab:1",
-          rawValues: '["a"]',
-          receivedAt,
-          resolvedRecordId: "review_1",
-        },
-        now,
-      ),
-    ).toEqual({
-      sourceId: "sheets:bookReviews:sheet:tab:1",
-      receivedAt,
-      resolvedRecordId: "review_1",
-    });
   });
 
   it("reports missing credentials on feed health", () => {

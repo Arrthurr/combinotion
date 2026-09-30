@@ -72,6 +72,7 @@ export type ParsedRow = {
   sourceId: SheetsSourceId;
   fingerprint: string;
   rawValues: string;
+  sourcePayload?: { headers: string[]; cells: string[] };
   outcome:
     | { kind: "candidate"; candidate: IntakeCandidate }
     | { kind: "invalid"; errors: string[] };
@@ -183,6 +184,7 @@ export function parseRow(
     (column) => !hasHeader(headers, column),
   );
   const rawValues = JSON.stringify(cells);
+  const sourcePayload = { headers, cells };
   const errors: string[] = missingIdentity.map(
     (column) => `Missing identity column ${column}`,
   );
@@ -223,6 +225,7 @@ export function parseRow(
         sourceId,
         fingerprint: fingerprintOf({ headers, cells }),
         rawValues,
+        sourcePayload,
         outcome: { kind: "invalid", errors },
       };
     }
@@ -238,6 +241,7 @@ export function parseRow(
       sourceId,
       fingerprint: fingerprintOf(candidate),
       rawValues,
+      sourcePayload,
       outcome: { kind: "candidate", candidate },
     };
   }
@@ -271,6 +275,7 @@ export function parseRow(
       sourceId,
       fingerprint: fingerprintOf({ headers, cells }),
       rawValues,
+      sourcePayload,
       outcome: { kind: "invalid", errors },
     };
   }
@@ -286,6 +291,7 @@ export function parseRow(
     sourceId,
     fingerprint: fingerprintOf(candidate),
     rawValues,
+    sourcePayload,
     outcome: { kind: "candidate", candidate },
   };
 }
@@ -360,18 +366,6 @@ export function assertFreshFingerprint(
   if (existing !== expected) {
     throw new Error("This form row changed after you opened it");
   }
-}
-
-export function nextPurgeState<T extends { rawValues?: string; receivedAt: number }>(
-  item: T,
-  now: number,
-): T {
-  const ageDays = (now - item.receivedAt) / (24 * 60 * 60 * 1000);
-  if (ageDays < intakeRetentionDays || item.rawValues === undefined) {
-    return item;
-  }
-  const { rawValues: _rawValues, ...rest } = item;
-  return rest as T;
 }
 
 export function redactError(error: unknown): string {

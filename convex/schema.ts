@@ -135,6 +135,10 @@ export default defineSchema({
     fingerprint:v.string(),
     receivedAt:v.number(),
     rawValues:v.optional(v.string()),
+    sourcePayload:v.optional(v.object({
+      headers:v.array(v.string()),
+      cells:v.array(v.string()),
+    })),
     state:v.union(
       v.object({
         kind:v.literal("pending"),
@@ -229,4 +233,3 @@ export default defineSchema({
     importedAt:v.number(),
   }).index("by_source",["sourceId"]),
 });
-

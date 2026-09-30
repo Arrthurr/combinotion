@@ -1,9 +1,9 @@
 /// <reference types="vite/client" />
 import { convexTest } from "convex-test";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { api, internal } from "./_generated/api";
 import schema from "./schema";
-import { fingerprintOf, intakeRetentionDays } from "../lib/domain/intake";
+import { fingerprintOf, intakeRetentionDays, parseRow } from "../lib/domain/intake";
 
 const modules = import.meta.glob("./**/!(*.*.*)*.*s");
 
@@ -61,12 +61,20 @@ describe("intake", () => {
       newItems: 1,
       rowsSeen: 1,
     });
+    const [original] = await asStaff.query(api.intake.listItems, {});
+    // Simulate a pre-upgrade record with the JSON comparison representation.
+    await t.run(async (ctx) => {
+      await ctx.db.patch(original.itemId, { fingerprint: row.fingerprint });
+    });
     expect(await t.mutation(internal.intake.recordRows, { feedId, rows: [row] })).toEqual({
       newItems: 0,
       rowsSeen: 1,
     });
     const items = await asStaff.query(api.intake.listItems, {});
     expect(items).toHaveLength(1);
+    expect(items[0].state).toEqual(original.state);
+    expect(items[0].fingerprint).toBe(original.fingerprint);
+    expect(await asStaff.query(api.reviews.list, {})).toHaveLength(1);
   });
 
   it("creates a person from an unmatched donation row and keeps the source", async () => {
@@ -113,6 +121,12 @@ describe("intake", () => {
       kind: "createdRecord",
       record: { kind: "person", id: expect.any(String) },
     });
+    expect(await asStaff.mutation(api.intake.resolveItem, {
+      itemId: item.itemId, fingerprint: item.fingerprint,
+      action: { kind: "createPerson", name: "Should not be created again" },
+    })).toEqual(resolution);
+    await t.mutation(internal.intake.recordRows, { feedId, rows: [row] });
+    await t.mutation(internal.intake.workDownIntakeBacklog, {});
     const people = await asStaff.query(api.people.listPeople, {});
     expect(people).toEqual([
       expect.objectContaining({
@@ -431,6 +445,7 @@ describe("intake", () => {
     expect(await asStaff.mutation(api.intake.acceptPendingReviews, {})).toEqual({
       accepted: 1,
       failures: 0,
+      failureDetails: [],
     });
     expect(await asStaff.query(api.intake.listItems, { state: "pending" })).toEqual(
       [],
@@ -475,6 +490,7 @@ describe("intake", () => {
         created: 1,
         attached: 0,
         failures: 0,
+        failureDetails: [],
       },
     );
     expect(await asStaff.query(api.intake.listItems, { state: "pending" })).toEqual(
@@ -526,9 +542,9 @@ describe("intake", () => {
     expect(
       await t.mutation(internal.intake.workDownIntakeBacklog, { limit: 50 }),
     ).toEqual({
-      invalid: { reparsed: 1, stillInvalid: 0, failures: 0 },
-      reviews: { accepted: 0, failures: 0 },
-      donations: { created: 0, attached: 0, failures: 0 },
+      invalid: { reparsed: 1, stillInvalid: 0, failures: 0, failureDetails: [] },
+      reviews: { accepted: 0, failures: 0, failureDetails: [] },
+      donations: { created: 0, attached: 0, failures: 0, failureDetails: [] },
       counts: { pending: 0, invalid: 0, resolved: 1 },
     });
     expect(await asStaff.query(api.reviews.list, {})).toEqual([
@@ -540,6 +556,38 @@ describe("intake", () => {
     ]);
   });
 
+  it("recovers invalid rows from source payload rather than an opaque fingerprint", async () => {
+    const { t, asStaff } = await createStaffTest();
+    const feedId = await asStaff.mutation(api.intake.saveFeedConfig, {
+      kind: "bookReviews",
+      spreadsheetId: "reviews",
+      tabName: "Responses",
+      mapping: { ...reviewMapping, scoreColumn: "Wrong score" },
+    });
+    const headers = ["Timestamp", "Email Address", "Your name", "Score", "Review", "ISBN"];
+    const cells = ["one", "pat@example.com", "Pat", "4", "Loved it", "9780000000001"];
+    const parsed = parseRow({
+      kind: "bookReviews", spreadsheetId: "reviews", tabName: "Responses",
+      mapping: { ...reviewMapping, scoreColumn: "Wrong score" },
+    }, headers, cells);
+    await t.mutation(internal.intake.recordRows, {
+      feedId,
+      rows: [{ ...parsed, fingerprint: "opaque-comparison-token" }],
+    });
+    await asStaff.mutation(api.intake.saveFeedConfig, {
+      feedId, kind: "bookReviews", spreadsheetId: "reviews", tabName: "Responses",
+      mapping: reviewMapping,
+    });
+    const result = await t.mutation(internal.intake.workDownIntakeBacklog, {});
+    expect(result.invalid).toMatchObject({ reparsed: 1, stillInvalid: 0, failures: 0 });
+    await t.mutation(internal.intake.workDownIntakeBacklog, {});
+    const reviews = await asStaff.query(api.reviews.list, {});
+    expect(reviews).toEqual([expect.objectContaining({ reviewer: "Pat", score: 4, feedback: "Loved it" })]);
+    expect(await asStaff.query(api.intake.listItems, {})).toEqual([
+      expect.objectContaining({ sourceId: parsed.sourceId, state: expect.objectContaining({ kind: "resolved" }) }),
+    ]);
+  });
+
   it("reports feed health before a sheet is approved", async () => {
     const { asStaff } = await createStaffTest();
     const health = await asStaff.query(api.intake.listHealth, {});
@@ -547,5 +595,173 @@ describe("intake", () => {
       ? "Approve a sheet, tab, and mapping"
       : "Google credentials are missing";
     expect(health.map((feed) => feed.message)).toEqual([expected, expected]);
+  });
+
+  it("returns item-level failures and bounds attempted work, not just successful work", async () => {
+    const { t, asStaff } = await createStaffTest();
+    const feedId = await asStaff.mutation(api.intake.saveFeedConfig, {
+      kind: "bookReviews", spreadsheetId: "reviews", tabName: "Responses", mapping: reviewMapping,
+    });
+    const [badId] = await t.run(async (ctx) => {
+      const ids = [];
+      for (const [sourceId, titleText] of [["bad", " "], ["good", "A Good Book"]]) {
+        ids.push(await ctx.db.insert("intakeItems", {
+          feedId, sourceId, fingerprint: sourceId, receivedAt: Date.now(),
+          state: { kind: "pending", candidate: { kind: "review", reviewer: "Pat", score: 4, feedback: "Useful", titleText } },
+        }));
+      }
+      return ids;
+    });
+    expect(await asStaff.mutation(api.intake.acceptPendingReviews, { limit: 0 })).toEqual({
+      accepted: 0, failures: 0, failureDetails: [],
+    });
+    await expect(asStaff.mutation(api.intake.acceptPendingReviews, { limit: -1 })).rejects.toThrow("non-negative integer");
+    await expect(asStaff.mutation(api.intake.acceptPendingReviews, { limit: 1.5 })).rejects.toThrow("non-negative integer");
+    const limited = await asStaff.mutation(api.intake.acceptPendingReviews, { limit: 1 });
+    expect(limited).toEqual({
+      accepted: 0, failures: 1,
+      failureDetails: [{ itemId: badId, sourceId: "bad", message: "Reviewed title is required" }],
+    });
+    expect(await asStaff.query(api.reviews.list, {})).toEqual([]);
+    expect(await asStaff.query(api.intake.listItems, { state: "pending" })).toHaveLength(2);
+    const result = await asStaff.mutation(api.intake.acceptPendingReviews, {});
+    expect(result).toMatchObject({ accepted: 1, failures: 1 });
+    expect(await asStaff.query(api.reviews.list, {})).toEqual([
+      expect.objectContaining({ title: "A Good Book", reviewer: "Pat" }),
+    ]);
+  });
+
+  it("marks resolved rows as drifted without replacing the review or its resolution timestamp", async () => {
+    const { t, asStaff } = await createStaffTest();
+    const feed = { kind: "bookReviews" as const, spreadsheetId: "reviews", tabName: "Responses", mapping: reviewMapping };
+    const feedId = await asStaff.mutation(api.intake.saveFeedConfig, feed);
+    const headers = ["Timestamp", "Email Address", "Your name", "Score", "Review", "ISBN"];
+    const original = parseRow(feed, headers, ["one", "pat@example.com", "Pat", "3", "Original review", "9780000000001"]);
+    await t.mutation(internal.intake.recordRows, { feedId, rows: [original] });
+    const [before] = await asStaff.query(api.intake.listItems, {});
+    if (before.state.kind !== "resolved") throw new Error("Expected automatic resolution");
+    const edited = parseRow(feed, headers, ["one", "pat@example.com", "Pat", "5", "Edited review", "9780000000001"]);
+    for (const row of [edited, edited, original]) {
+      await t.mutation(internal.intake.recordRows, { feedId, rows: [row] });
+      const [after] = await asStaff.query(api.intake.listItems, {});
+      expect(after).toMatchObject({
+        itemId: before.itemId,
+        state: { ...before.state, sourceDrift: true },
+      });
+      expect(after.fingerprint).toMatch(/^sha256:[a-f0-9]{64}$/);
+      if (row === original) expect(after.fingerprint).toBe(before.fingerprint);
+      else expect(after.fingerprint).not.toBe(before.fingerprint);
+    }
+    expect(await asStaff.query(api.reviews.list, {})).toEqual([
+      expect.objectContaining({ score: 3, feedback: "Original review" }),
+    ]);
+  });
+
+  it("reparses invalid donations to pending and deduplicates people across bulk retries", async () => {
+    const { t, asStaff } = await createStaffTest();
+    const feed = { kind: "donationApplications" as const, spreadsheetId: "donations", tabName: "Responses", mapping: donationMapping };
+    const feedId = await asStaff.mutation(api.intake.saveFeedConfig, { ...feed, mapping: { ...donationMapping, nameColumn: "Wrong name" } });
+    const headers = ["Timestamp", "Email", "Name"];
+    const row = parseRow({ ...feed, mapping: { ...donationMapping, nameColumn: "Wrong name" } }, headers, ["one", "ada@example.com", "Ada"]);
+    await t.mutation(internal.intake.recordRows, { feedId, rows: [row] });
+    await asStaff.mutation(api.intake.saveFeedConfig, { ...feed, feedId });
+    const [invalid] = await asStaff.query(api.intake.listItems, {});
+    expect(await t.mutation(internal.intake.processItem, { itemId: invalid.itemId, operation: "reprocess" })).toBe("reparsed");
+    expect(await asStaff.query(api.intake.listItems, { state: "pending" })).toEqual([
+      expect.objectContaining({ itemId: invalid.itemId, state: { kind: "pending", candidate: { kind: "donationApplication", name: "Ada", email: "ada@example.com" } } }),
+    ]);
+    const other = parseRow(feed, headers, ["two", "ADA@example.com", "Ada again"]);
+    await t.mutation(internal.intake.recordRows, { feedId, rows: [other] });
+    expect(await asStaff.mutation(api.intake.createPendingDonations, {})).toEqual({
+      created: 1, attached: 1, failures: 0, failureDetails: [],
+    });
+    expect(await asStaff.mutation(api.intake.createPendingDonations, {})).toEqual({
+      created: 0, attached: 0, failures: 0, failureDetails: [],
+    });
+    const corrected = parseRow(feed, headers, ["one", "ada@example.com", "Ada"]);
+    await t.mutation(internal.intake.recordRows, { feedId, rows: [corrected, other] });
+    expect(await asStaff.query(api.people.listPeople, {})).toEqual([
+      expect.objectContaining({ name: "Ada", email: "ada@example.com" }),
+    ]);
+  });
+
+  it("drops a stale invalid source copy when a poll already resolved its corrected identity", async () => {
+    const { t, asStaff } = await createStaffTest();
+    const feed = { kind: "bookReviews" as const, spreadsheetId: "reviews", tabName: "Responses", mapping: reviewMapping };
+    const feedId = await asStaff.mutation(api.intake.saveFeedConfig, feed);
+    const headers = ["Timestamp", "Email Address", "Your name", "Score", "Review", "ISBN"];
+    const row = parseRow(feed, headers, ["one", "pat@example.com", "Pat", "4", "Useful", "9780000000001"]);
+    await t.run(async (ctx) => {
+      await ctx.db.insert("intakeItems", {
+        feedId, sourceId: "stale-identity", fingerprint: "opaque", receivedAt: Date.now(),
+        sourcePayload: row.sourcePayload, rawValues: row.rawValues,
+        state: { kind: "invalid", errors: ["Old mapping failed"] },
+      });
+    });
+    await t.mutation(internal.intake.recordRows, { feedId, rows: [row] });
+    const result = await t.mutation(internal.intake.workDownIntakeBacklog, {});
+    expect(result.invalid).toEqual({ reparsed: 1, stillInvalid: 0, failures: 0, failureDetails: [] });
+    expect(await asStaff.query(api.intake.listItems, {})).toHaveLength(1);
+    expect(await asStaff.query(api.reviews.list, {})).toHaveLength(1);
+  });
+
+  it("purges both source representations and does not resurrect legacy rows from fingerprints", async () => {
+    const { t, asStaff } = await createStaffTest();
+    const feed = { kind: "bookReviews" as const, spreadsheetId: "reviews", tabName: "Responses", mapping: reviewMapping };
+    const feedId = await asStaff.mutation(api.intake.saveFeedConfig, feed);
+    const headers = ["Timestamp", "Email Address", "Your name", "Score", "Review", "ISBN"];
+    const cells = ["one", "pat@example.com", "Pat", "4", "Useful", "9780000000001"];
+    await t.run(async (ctx) => {
+      for (const sourceId of ["legacy", "new", "already-purged"]) {
+        await ctx.db.insert("intakeItems", {
+          feedId, sourceId, fingerprint: fingerprintOf({ headers, cells }),
+          receivedAt: Date.now() - (intakeRetentionDays + 1) * 24 * 60 * 60 * 1000,
+          ...(sourceId === "already-purged" ? {} : { rawValues: JSON.stringify(cells) }),
+          ...(sourceId === "new" ? { sourcePayload: { headers, cells } } : {}),
+          state: { kind: "invalid", errors: ["Old mapping failed"] },
+        });
+      }
+    });
+    expect(await t.mutation(internal.intake.purgeExpiredRaw, {})).toBe(2);
+    expect(await t.mutation(internal.intake.purgeExpiredRaw, {})).toBe(0);
+    const result = await t.mutation(internal.intake.workDownIntakeBacklog, {});
+    const items = await asStaff.query(api.intake.listItems, {});
+    expect(result.invalid.failureDetails).toEqual(items.map((item) => ({
+      itemId: item.itemId, sourceId: item.sourceId,
+      message: expect.stringContaining("Source payload is unavailable"),
+    })));
+    for (const item of items) {
+      expect(item.fingerprint).toMatch(/^sha256:[a-f0-9]{64}$/);
+      expect(item.rawPayloadPresent).toBe(false);
+    }
+    expect(result.counts).toEqual({ invalid: 3, pending: 0, resolved: 0 });
+    expect(await asStaff.query(api.reviews.list, {})).toEqual([]);
+  });
+
+  it("retains source payload just before 180 days and purges it at the boundary", async () => {
+    const { t, asStaff } = await createStaffTest();
+    const feedId = await asStaff.mutation(api.intake.saveFeedConfig, {
+      kind: "donationApplications", spreadsheetId: "donations", tabName: "Responses", mapping: donationMapping,
+    });
+    const now = Date.now();
+    const clock = vi.spyOn(Date, "now").mockReturnValue(now);
+    try {
+      await t.run(async (ctx) => {
+        for (const [sourceId, offset] of [["younger", 1], ["boundary", 0]] as const) {
+          await ctx.db.insert("intakeItems", {
+            feedId, sourceId, fingerprint: sourceId,
+            receivedAt: now - intakeRetentionDays * 24 * 60 * 60 * 1000 + offset,
+            sourcePayload: { headers: ["Name"], cells: ["Ada"] },
+            state: { kind: "pending", candidate: { kind: "donationApplication", name: "Ada" } },
+          });
+        }
+      });
+      expect(await t.mutation(internal.intake.purgeExpiredRaw, {})).toBe(1);
+      const items = await asStaff.query(api.intake.listItems, {});
+      expect(items.find((item) => item.sourceId === "younger")?.rawPayloadPresent).toBe(true);
+      expect(items.find((item) => item.sourceId === "boundary")?.rawPayloadPresent).toBe(false);
+    } finally {
+      clock.mockRestore();
+    }
   });
 });

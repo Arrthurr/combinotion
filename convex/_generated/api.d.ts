@@ -16,6 +16,7 @@ import type * as integrations_openLibrary from "../integrations/openLibrary.js";
 import type * as inventory from "../inventory.js";
 import type * as lib_auth from "../lib/auth.js";
 import type * as lib_catalog from "../lib/catalog.js";
+import type * as lib_intakeLifecycle from "../lib/intakeLifecycle.js";
 import type * as lib_validation from "../lib/validation.js";
 import type * as migrations_clearLegacyCrmTables from "../migrations/clearLegacyCrmTables.js";
 import type * as migrations_notionImport from "../migrations/notionImport.js";
@@ -49,6 +50,7 @@ declare const fullApi: ApiFromModules<{
   inventory: typeof inventory;
   "lib/auth": typeof lib_auth;
   "lib/catalog": typeof lib_catalog;
+  "lib/intakeLifecycle": typeof lib_intakeLifecycle;
   "lib/validation": typeof lib_validation;
   "migrations/clearLegacyCrmTables": typeof migrations_clearLegacyCrmTables;
   "migrations/notionImport": typeof migrations_notionImport;

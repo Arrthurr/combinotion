@@ -1,5 +1,5 @@
 import { v } from "convex/values";
-import type { Doc, Id } from "./_generated/dataModel";
+import type { Doc } from "./_generated/dataModel";
 import {
   action,
   internalAction,
@@ -7,31 +7,31 @@ import {
   internalQuery,
   mutation,
   query,
-  type MutationCtx,
 } from "./_generated/server";
 import { internal } from "./_generated/api";
 import { requireStaff } from "./lib/auth";
-import { findTitleByIsbn } from "./lib/catalog";
 import { required } from "./lib/validation";
-import { normalizeIsbn, stripNotionMarkdown } from "../lib/domain/catalog";
-import { matchSchool, normalizeSchool } from "../lib/domain/requests";
+import { normalizeIsbn } from "../lib/domain/catalog";
+import { matchSchool } from "../lib/domain/requests";
 import {
-  assertFreshFingerprint,
-  assertUniqueSourceIds,
+  acceptPendingReviewItems,
+  createPendingDonationItems,
+  processIntakeItem,
+  purgeExpiredIntakeRaw,
+  recordIntakeRows,
+  reprocessInvalidIntakeItems,
+  resolveIntakeItem,
+  type ItemTransitionOutcome,
+} from "./lib/intakeLifecycle";
+import {
   feedHealth,
   intakeRetentionDays,
-  matchCandidate,
-  nextPurgeState,
-  parseRow,
-  planRow,
   redactError,
   type FeedHealth,
-  type IntakeCandidate,
   type IntakeFeedKind,
   type IntakeItemState,
   type IntakeMapping,
   type IntakeRecordRef,
-  type IntakeResolution,
   type ParsedRow,
 } from "../lib/domain/intake";
 
@@ -87,103 +87,6 @@ const intakeCandidate = v.union(reviewCandidate, donationCandidate);
 
 function credentialPresent() {
   return Boolean(process.env.GOOGLE_SERVICE_ACCOUNT_JSON?.trim());
-}
-
-async function catalogLookups(ctx: MutationCtx) {
-  const [titles, people] = await Promise.all([
-    ctx.db.query("titles").collect(),
-    ctx.db.query("people").collect(),
-  ]);
-  return {
-    titleByIsbn: (isbn: string) => {
-      const normalized = normalizeIsbn(isbn);
-      if (!normalized) {
-        return null;
-      }
-      return (
-        titles.find((title) => normalizeIsbn(title.isbn) === normalized)?._id ??
-        null
-      );
-    },
-    titleByTitleText: (titleText: string) => {
-      const normalized = stripNotionMarkdown(titleText).toLocaleLowerCase();
-      if (!normalized) {
-        return null;
-      }
-      const matches = titles.filter(
-        (title) =>
-          stripNotionMarkdown(title.title).toLocaleLowerCase() ===
-          normalized,
-      );
-      return matches.length === 1 ? matches[0]._id : null;
-    },
-    personByEmail: (email: string) =>
-      people.find(
-        (person) => person.email?.toLocaleLowerCase() === email.toLocaleLowerCase(),
-      )?._id ?? null,
-  };
-}
-
-async function insertReviewFromCandidate(
-  ctx: MutationCtx,
-  candidate: Extract<IntakeCandidate, { kind: "review" }>,
-  titleId?: Id<"titles">,
-) {
-  const title = titleId ? await ctx.db.get(titleId) : null;
-  const titleText =
-    candidate.titleText?.trim() || title?.title || candidate.isbn?.trim();
-  if (!titleText) {
-    throw new Error("Reviewed title is required");
-  }
-  return await ctx.db.insert("reviews", {
-    ...(titleId ? { titleId } : {}),
-    titleText,
-    ...(candidate.isbn?.trim() ? { isbn: candidate.isbn.trim() } : {}),
-    reviewer: candidate.reviewer,
-    feedback: candidate.feedback,
-    score: candidate.score,
-    approved: false,
-  });
-}
-
-async function applyAutoMatch(
-  ctx: MutationCtx,
-  candidate: IntakeCandidate,
-): Promise<IntakeItemState> {
-  const match = matchCandidate(candidate, await catalogLookups(ctx));
-  if (match.kind === "needsStaff") {
-    return { kind: "pending", candidate };
-  }
-  if (match.kind === "recordReview") {
-    if (candidate.kind !== "review") {
-      throw new Error("Review match requires a review candidate");
-    }
-    const reviewId = await insertReviewFromCandidate(
-      ctx,
-      candidate,
-      match.titleId as Id<"titles"> | undefined,
-    );
-    return {
-      kind: "resolved",
-      candidate,
-      resolution: {
-        kind: "autoApplied",
-        record: { kind: "review", id: reviewId },
-      },
-      resolvedAt: Date.now(),
-      sourceDrift: false,
-    };
-  }
-  return {
-    kind: "resolved",
-    candidate,
-    resolution: {
-      kind: "autoApplied",
-      record: match.target,
-    },
-    resolvedAt: Date.now(),
-    sourceDrift: false,
-  };
 }
 
 export const listFeeds = query({
@@ -348,6 +251,10 @@ export const recordRows = internalMutation({
         sourceId: v.string(),
         fingerprint: v.string(),
         rawValues: v.string(),
+        sourcePayload: v.optional(v.object({
+          headers: v.array(v.string()),
+          cells: v.array(v.string()),
+        })),
         outcome: v.union(
           v.object({
             kind: v.literal("candidate"),
@@ -361,82 +268,8 @@ export const recordRows = internalMutation({
       }),
     ),
   },
-  handler: async (ctx, { feedId, rows }) => {
-    const feed = await ctx.db.get(feedId);
-    if (!feed) {
-      throw new Error("Feed not found");
-    }
-    assertUniqueSourceIds(rows);
-    let newItems = 0;
-    for (const row of rows as ParsedRow[]) {
-      const existing = await ctx.db
-        .query("intakeItems")
-        .withIndex("by_source", (q) => q.eq("sourceId", row.sourceId))
-        .unique();
-      const plan = planRow(
-        existing
-          ? { fingerprint: existing.fingerprint, state: existing.state }
-          : null,
-        row,
-      );
-      switch (plan.kind) {
-        case "skip":
-          break;
-        case "create": {
-          const state =
-            plan.state.kind === "pending"
-              ? await applyAutoMatch(ctx, plan.state.candidate)
-              : plan.state;
-          await ctx.db.insert("intakeItems", {
-            feedId,
-            sourceId: row.sourceId,
-            fingerprint: row.fingerprint,
-            receivedAt: Date.now(),
-            rawValues: row.rawValues,
-            state,
-          });
-          newItems += 1;
-          break;
-        }
-        case "reparse": {
-          if (!existing) {
-            break;
-          }
-          const state =
-            plan.state.kind === "pending"
-              ? await applyAutoMatch(ctx, plan.state.candidate)
-              : plan.state;
-          await ctx.db.patch(existing._id, {
-            fingerprint: row.fingerprint,
-            rawValues: row.rawValues,
-            state,
-          });
-          break;
-        }
-        case "markDrift":
-          if (existing && existing.state.kind === "resolved") {
-            await ctx.db.patch(existing._id, {
-              fingerprint: row.fingerprint,
-              state: { ...existing.state, sourceDrift: true },
-            });
-          }
-          break;
-        default: {
-          const unhandled: never = plan;
-          throw new Error(`Unhandled intake plan: ${JSON.stringify(unhandled)}`);
-        }
-      }
-    }
-    await ctx.db.patch(feedId, {
-      lastPoll: {
-        kind: "ok",
-        at: Date.now(),
-        rowsSeen: rows.length,
-        newItems,
-      },
-    });
-    return { newItems, rowsSeen: rows.length };
-  },
+  handler: async (ctx, { feedId, rows }) =>
+    await recordIntakeRows(ctx, feedId, rows as ParsedRow[]),
 });
 
 export const listItems = query({
@@ -469,44 +302,12 @@ export const listItems = query({
         sourceId: item.sourceId,
         fingerprint: item.fingerprint,
         receivedAt: item.receivedAt,
-        rawPayloadPresent: item.rawValues !== undefined,
+        rawPayloadPresent: item.rawValues !== undefined || item.sourcePayload !== undefined,
         state: item.state,
         suggestions: suggestionsFor(item.state, people, schools, titles),
       }));
   },
 });
-
-async function requireAttachTarget(
-  ctx: MutationCtx,
-  record: IntakeRecordRef,
-) {
-  switch (record.kind) {
-    case "person":
-      if (!(await ctx.db.get(record.id as Id<"people">))) {
-        throw new Error("Person not found");
-      }
-      return;
-    case "school":
-      if (!(await ctx.db.get(record.id as Id<"schools">))) {
-        throw new Error("School not found");
-      }
-      return;
-    case "title":
-      if (!(await ctx.db.get(record.id as Id<"titles">))) {
-        throw new Error("Title not found");
-      }
-      return;
-    case "review":
-      if (!(await ctx.db.get(record.id as Id<"reviews">))) {
-        throw new Error("Review not found");
-      }
-      return;
-    default: {
-      const unhandled: never = record;
-      throw new Error(`Unhandled attach target: ${JSON.stringify(unhandled)}`);
-    }
-  }
-}
 
 function suggestionsFor(
   state: IntakeItemState,
@@ -579,345 +380,20 @@ export const resolveItem = mutation({
       v.object({ kind: v.literal("dismiss"), reason: v.string() }),
     ),
   },
-  handler: async (ctx, { itemId, fingerprint, action }) => {
+  handler: async (ctx, args) => {
     await requireStaff(ctx);
-    const item = await ctx.db.get(itemId);
-    if (!item) {
-      throw new Error("Intake item not found");
-    }
-    assertFreshFingerprint(item.fingerprint, fingerprint);
-    if (item.state.kind === "resolved") {
-      return item.state.resolution;
-    }
-    if (item.state.kind === "invalid") {
-      throw new Error("Fix the source row before resolving this item");
-    }
-    const candidate = item.state.candidate;
-    let resolution: IntakeResolution;
-    switch (action.kind) {
-      case "dismiss":
-        resolution = {
-          kind: "dismissed",
-          reason: required(action.reason, "Reason"),
-        };
-        break;
-      case "attach": {
-        await requireAttachTarget(ctx, action.record);
-        if (candidate.kind === "review" && action.record.kind === "title") {
-          const reviewId = await insertReviewFromCandidate(
-            ctx,
-            candidate,
-            action.record.id as Id<"titles">,
-          );
-          resolution = {
-            kind: "attached",
-            record: { kind: "review", id: reviewId },
-          };
-          break;
-        }
-        resolution = { kind: "attached", record: action.record };
-        break;
-      }
-      case "createPerson": {
-        const personId = await ctx.db.insert("people", {
-          name: required(action.name, "Name"),
-          ...(action.email?.trim() ? { email: action.email.trim() } : {}),
-          roles: ["donor"],
-        });
-        if (action.schoolName && action.schoolAddress) {
-          const schools = await ctx.db.query("schools").collect();
-          const existingSchool = matchSchool({
-            name: action.schoolName,
-            address: action.schoolAddress,
-            schools: schools.map((school) => ({
-              id: school._id,
-              normalizedName: school.normalizedName,
-              normalizedAddress: school.normalizedAddress,
-            })),
-          });
-          const schoolId =
-            existingSchool.matchStatus === "attached"
-              ? (existingSchool.schoolId as Id<"schools">)
-              : await ctx.db.insert("schools", {
-                  name: action.schoolName.trim(),
-                  address: action.schoolAddress.trim(),
-                  normalizedName: normalizeSchool(action.schoolName),
-                  normalizedAddress: normalizeSchool(action.schoolAddress),
-                });
-          await ctx.db.insert("schoolContacts", {
-            schoolId,
-            personId,
-          });
-        }
-        resolution = {
-          kind: "createdRecord",
-          record: { kind: "person", id: personId },
-        };
-        break;
-      }
-      case "createTitle": {
-        if (candidate.kind !== "review") {
-          throw new Error("Create a title from a review item");
-        }
-        const isbn = normalizeIsbn(required(action.isbn, "ISBN"));
-        const title = stripNotionMarkdown(required(action.title, "Title"));
-        const author = stripNotionMarkdown(required(action.author, "Author"));
-        if (!isbn) {
-          throw new Error("ISBN is required");
-        }
-        if (!title) {
-          throw new Error("Title is required");
-        }
-        if (!author) {
-          throw new Error("Author is required");
-        }
-        const existing = await findTitleByIsbn(ctx, isbn);
-        const titleId =
-          existing?._id ??
-          (await ctx.db.insert("titles", {
-            title,
-            author,
-            isbn,
-            quantityOnHand: 0,
-            activeReservedQuantity: 0,
-            reorderNeeded: false,
-          }));
-        const reviewId = await insertReviewFromCandidate(
-          ctx,
-          candidate,
-          titleId,
-        );
-        resolution = {
-          kind: "createdRecord",
-          record: { kind: "review", id: reviewId },
-        };
-        break;
-      }
-      default: {
-        const unhandled: never = action;
-        throw new Error(`Unhandled resolve action: ${JSON.stringify(unhandled)}`);
-      }
-    }
-    await ctx.db.patch(itemId, {
-      state: {
-        kind: "resolved",
-        candidate,
-        resolution,
-        resolvedAt: Date.now(),
-        sourceDrift: false,
-      },
-    });
-    return resolution;
+    return await resolveIntakeItem(ctx, args);
   },
 });
 
-async function acceptPendingReviewItems(
-  ctx: MutationCtx,
-  limit: number | undefined,
-) {
-  const items = await ctx.db.query("intakeItems").collect();
-  const max = limit ?? 200;
-  let accepted = 0;
-  let failures = 0;
-  for (const item of items) {
-    if (accepted >= max) {
-      break;
-    }
-    if (item.state.kind !== "pending") {
-      continue;
-    }
-    if (item.state.candidate.kind !== "review") {
-      continue;
-    }
-    try {
-      const state = await applyAutoMatch(ctx, item.state.candidate);
-      if (state.kind !== "resolved") {
-        continue;
-      }
-      await ctx.db.patch(item._id, { state });
-      accepted += 1;
-    } catch {
-      failures += 1;
-    }
-  }
-  return { accepted, failures };
-}
-
-async function createPendingDonationItems(
-  ctx: MutationCtx,
-  limit: number | undefined,
-) {
-  const items = await ctx.db.query("intakeItems").collect();
-  const max = limit ?? 200;
-  let created = 0;
-  let attached = 0;
-  let failures = 0;
-  for (const item of items) {
-    if (created + attached >= max) {
-      break;
-    }
-    if (item.state.kind !== "pending") {
-      continue;
-    }
-    const candidate = item.state.candidate;
-    if (candidate.kind !== "donationApplication") {
-      continue;
-    }
-    try {
-      const matched = await applyAutoMatch(ctx, candidate);
-      if (matched.kind === "resolved") {
-        await ctx.db.patch(item._id, { state: matched });
-        attached += 1;
-        continue;
-      }
-      const personId = await ctx.db.insert("people", {
-        name: required(candidate.name, "Name"),
-        ...(candidate.email?.trim() ? { email: candidate.email.trim() } : {}),
-        roles: ["donor"],
-      });
-      if (candidate.schoolName && candidate.schoolAddress) {
-        const schools = await ctx.db.query("schools").collect();
-        const existingSchool = matchSchool({
-          name: candidate.schoolName,
-          address: candidate.schoolAddress,
-          schools: schools.map((school) => ({
-            id: school._id,
-            normalizedName: school.normalizedName,
-            normalizedAddress: school.normalizedAddress,
-          })),
-        });
-        const schoolId =
-          existingSchool.matchStatus === "attached"
-            ? (existingSchool.schoolId as Id<"schools">)
-            : await ctx.db.insert("schools", {
-                name: candidate.schoolName.trim(),
-                address: candidate.schoolAddress.trim(),
-                normalizedName: normalizeSchool(candidate.schoolName),
-                normalizedAddress: normalizeSchool(candidate.schoolAddress),
-              });
-        await ctx.db.insert("schoolContacts", {
-          schoolId,
-          personId,
-        });
-      }
-      await ctx.db.patch(item._id, {
-        state: {
-          kind: "resolved",
-          candidate,
-          resolution: {
-            kind: "createdRecord",
-            record: { kind: "person", id: personId },
-          },
-          resolvedAt: Date.now(),
-          sourceDrift: false,
-        },
-      });
-      created += 1;
-    } catch {
-      failures += 1;
-    }
-  }
-  return { created, attached, failures };
-}
-
-function headersAndCellsFromInvalid(item: Doc<"intakeItems">) {
-  if (item.state.kind !== "invalid") {
-    return null;
-  }
-  try {
-    const parsed: unknown = JSON.parse(item.fingerprint);
-    if (
-      typeof parsed !== "object" ||
-      parsed === null ||
-      !("headers" in parsed) ||
-      !("cells" in parsed) ||
-      !Array.isArray(parsed.headers) ||
-      !Array.isArray(parsed.cells)
-    ) {
-      return null;
-    }
-    return {
-      headers: parsed.headers.map((header) => String(header)),
-      cells: parsed.cells.map((cell) => String(cell ?? "")),
-    };
-  } catch {
-    return null;
-  }
-}
-
-async function reprocessInvalidIntakeItems(
-  ctx: MutationCtx,
-  limit: number | undefined,
-) {
-  const items = await ctx.db.query("intakeItems").collect();
-  const feeds = await ctx.db.query("intakeFeeds").collect();
-  const feedById = new Map(feeds.map((feed) => [feed._id, feed]));
-  const max = limit ?? 200;
-  let reparsed = 0;
-  let stillInvalid = 0;
-  let failures = 0;
-  for (const item of items) {
-    if (reparsed + stillInvalid >= max) {
-      break;
-    }
-    if (item.state.kind !== "invalid") {
-      continue;
-    }
-    const feed = feedById.get(item.feedId);
-    if (!feed) {
-      failures += 1;
-      continue;
-    }
-    const recovered = headersAndCellsFromInvalid(item);
-    if (!recovered) {
-      failures += 1;
-      continue;
-    }
-    try {
-      const row = parseRow(
-        {
-          kind: feed.kind,
-          mapping: feed.mapping,
-          spreadsheetId: feed.spreadsheetId,
-          tabName: feed.tabName,
-        },
-        recovered.headers,
-        recovered.cells,
-      );
-      const existingBySource = await ctx.db
-        .query("intakeItems")
-        .withIndex("by_source", (q) => q.eq("sourceId", row.sourceId))
-        .unique();
-      if (existingBySource && existingBySource._id !== item._id) {
-        // A later poll already stored the corrected source id. Drop the stale invalid copy.
-        await ctx.db.delete(item._id);
-        reparsed += 1;
-        continue;
-      }
-      if (row.outcome.kind === "invalid") {
-        await ctx.db.patch(item._id, {
-          sourceId: row.sourceId,
-          fingerprint: row.fingerprint,
-          rawValues: row.rawValues,
-          state: { kind: "invalid", errors: row.outcome.errors },
-        });
-        stillInvalid += 1;
-        continue;
-      }
-      const state = await applyAutoMatch(ctx, row.outcome.candidate);
-      await ctx.db.patch(item._id, {
-        sourceId: row.sourceId,
-        fingerprint: row.fingerprint,
-        rawValues: row.rawValues,
-        state,
-      });
-      reparsed += 1;
-    } catch {
-      failures += 1;
-    }
-  }
-  return { reparsed, stillInvalid, failures };
-}
+export const processItem = internalMutation({
+  args: {
+    itemId: v.id("intakeItems"),
+    operation: v.union(v.literal("reprocess"), v.literal("acceptReview"), v.literal("createDonation")),
+  },
+  handler: async (ctx, { itemId, operation }): Promise<ItemTransitionOutcome> =>
+    await processIntakeItem(ctx, itemId, operation),
+});
 
 export const acceptPendingReviews = mutation({
   args: { limit: v.optional(v.number()) },
@@ -953,19 +429,7 @@ export const workDownIntakeBacklog = internalMutation({
 
 export const purgeExpiredRaw = internalMutation({
   args: {},
-  handler: async (ctx) => {
-    const now = Date.now();
-    const items = await ctx.db.query("intakeItems").collect();
-    let purged = 0;
-    for (const item of items) {
-      const next = nextPurgeState(item, now);
-      if (next.rawValues === undefined && item.rawValues !== undefined) {
-        await ctx.db.patch(item._id, { rawValues: undefined });
-        purged += 1;
-      }
-    }
-    return purged;
-  },
+  handler: async (ctx) => await purgeExpiredIntakeRaw(ctx),
 });
 
 export const verifyAndEnableFeed = action({

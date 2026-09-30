@@ -26,7 +26,13 @@ The env vars hold credentials only. Feeds do not start because a sheet id is pre
 6. Convex polls enabled feeds every 15 minutes. Incoming forms shows pending, invalid, and resolved rows. Unmatched rows stay until you attach them, create the missing record, or dismiss them.
 7. After a first-time poll that imported full Form history, clear the backlog with `npx convex run intake:workDownIntakeBacklog --prod`. That re-parses invalid rows (including header casing drift), accepts leftover book reviews without inventing catalog titles, and creates people (and schools when both name and city/address are present) from pending donation applications. New polls still only add unmatched new rows; failed last-poll errors stay on Settings / Incoming forms.
 
+Backlog results include `failureDetails` with the item id, source id, and redacted error message for each failed item. The optional `limit` is a non-negative integer (default 200), bounding attempts per phase, including failures. Each item runs in a sub-transaction: failed writes roll back, successful items remain, and retries do not repeat resolved items.
+
+Item transitions live in `convex/lib/intakeLifecycle.ts`; feed configuration and Google Sheets fetching remain separate. Recoverable headers/cells are stored in `sourcePayload`, independently of the SHA-256 comparison fingerprint. Legacy JSON fingerprints are upgraded on replay without creating duplicate records or false source drift. Edits to resolved source rows mark drift but do not rewrite their original resolution or resulting record.
+
 Rotate the service account key when someone leaves or a sheet is unshared. Revoke the old key in Google Cloud, then replace `GOOGLE_SERVICE_ACCOUNT_JSON`. Raw form payloads are dropped after 180 days. The CRM record and the intake outcome stay.
+
+The purge removes both `rawValues` and `sourcePayload`. Legacy invalid rows can be recovered from their old fingerprint only while their raw payload is retained. Once purged, reprocessing reports that the source payload is unavailable rather than reconstructing it from the comparison field.
 
 ## Notion import
 
