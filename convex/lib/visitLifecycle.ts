@@ -139,7 +139,14 @@ async function removeVisitEffects(ctx: MutationCtx, visit: Doc<"visits">) {
     .query("visitBooks")
     .withIndex("by_visit", (q) => q.eq("visitId", visit._id))
     .collect();
-  const preferredReservations = new Map<Id<"titles">, Id<"reservations">>();
+  const preferredReservations = new Map(
+    books.flatMap((book) =>
+      book.consumptionStatus === "consumed" &&
+      book.consumedReservationId !== undefined
+        ? [[book.titleId, book.consumedReservationId] as const]
+        : [],
+    ),
+  );
   for (const book of books) {
     if (book.donatedQuantity > 0) {
       await reverseInventoryMovement(
@@ -147,6 +154,8 @@ async function removeVisitEffects(ctx: MutationCtx, visit: Doc<"visits">) {
         donationSourceId(visit._id, book.titleId, visit.effectGeneration),
       );
     }
+  }
+  for (const book of books) {
     if (
       book.consumptionStatus !== "consumed" ||
       book.consumedReservationId === undefined ||
@@ -154,7 +163,6 @@ async function removeVisitEffects(ctx: MutationCtx, visit: Doc<"visits">) {
     ) {
       continue;
     }
-    preferredReservations.set(book.titleId, book.consumedReservationId);
     const reservation = await ctx.db.get(book.consumedReservationId);
     if (!reservation) {
       throw new Error("Consumed reservation not found");
