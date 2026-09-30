@@ -6,11 +6,11 @@ import {
   query,
   type QueryCtx,
 } from "./_generated/server";
-import { appendInventoryMovement } from "./inventory";
-import { availableToRequest } from "./lib/availability";
+import { releaseReservation, reserveTitle } from "./inventory";
 import { requireStaff } from "./lib/auth";
 import { findTitleByIsbn } from "./lib/catalog";
 import { positiveInteger, required } from "./lib/validation";
+import { availableQuantity, isShortage } from "../lib/domain/inventory";
 import { matchSchool } from "../lib/domain/requests";
 import type { RequestStatus } from "../lib/domain/types";
 import { loadOrgSettings } from "./orgSettings";
@@ -58,8 +58,7 @@ async function requestDetails(
           titleName: title.title,
           isbn: title.isbn,
           quantity: reservation.quantity,
-          shortage:
-            title.quantityOnHand < title.activeReservedQuantity,
+          shortage: isShortage(title),
         };
       }),
   );
@@ -133,13 +132,7 @@ export const internalSubmit = internalMutation({
           throw new Error("A title can appear only once in a request");
         }
         titleIds.add(title._id);
-        if (
-          line.quantity >
-          availableToRequest(
-            title.quantityOnHand,
-            title.activeReservedQuantity,
-          )
-        ) {
+        if (line.quantity > availableQuantity(title)) {
           throw new Error("Those copies are no longer available");
         }
         return {
@@ -186,15 +179,9 @@ export const internalSubmit = internalMutation({
     });
 
     for (const line of preparedLines) {
-      await ctx.db.insert("reservations", {
+      await reserveTitle(ctx, {
         titleId: line.title._id,
         schoolRequestId: requestId,
-        quantity: line.quantity,
-        active: true,
-      });
-      await appendInventoryMovement(ctx, {
-        titleId: line.title._id,
-        kind: "reservation",
         quantity: line.quantity,
         sourceId: `reservation:${requestId}:${line.title._id}`,
       });
@@ -316,16 +303,10 @@ export const resolveRequest = mutation({
       )
       .collect();
     for (const reservation of reservations) {
-      if (!reservation.active) {
-        continue;
-      }
-      await appendInventoryMovement(ctx, {
-        titleId: reservation.titleId,
-        kind: "release",
-        quantity: reservation.quantity,
+      await releaseReservation(ctx, {
+        reservationId: reservation._id,
         sourceId: `release:${requestId}:${reservation.titleId}`,
       });
-      await ctx.db.patch(reservation._id, { active: false });
     }
     await ctx.db.patch(requestId, { status: nextStatus });
     return requestId;

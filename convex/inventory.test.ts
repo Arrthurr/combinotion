@@ -4,6 +4,10 @@ import { describe, expect, it } from "vitest";
 import { api, internal } from "./_generated/api";
 import {
   appendInventoryMovement,
+  consumeReservation,
+  releaseReservation,
+  reserveTitle,
+  restoreReservation,
   reverseInventoryMovement,
 } from "./inventory";
 import schema from "./schema";
@@ -274,5 +278,324 @@ describe("staff inventory", () => {
           "reverse:donation:visit-1:title-1:1",
       ),
     ).toHaveLength(1);
+  });
+});
+
+describe("inventory reservation stock", () => {
+  async function seedTitleAndRequest(
+    t: Awaited<ReturnType<typeof createStaffTest>>["t"],
+    asStaff: Awaited<ReturnType<typeof createStaffTest>>["asStaff"],
+    quantityOnHand: number,
+  ) {
+    const titleId = await createTitle(asStaff);
+    await asStaff.mutation(api.inventory.recordOpeningBalance, {
+      titleId,
+      quantity: quantityOnHand,
+      reason: "Physical count",
+    });
+    const schoolRequestId = await t.run(async (ctx) =>
+      ctx.db.insert("schoolRequests", {
+        schoolName: "Joy School",
+        schoolAddress: "1 Main Street",
+        contactName: "Pat",
+        email: "pat@example.com",
+        status: "active",
+        matchStatus: "unmatched",
+        reference: "JFB-TEST",
+        createdAt: Date.now(),
+      }),
+    );
+    return { titleId, schoolRequestId };
+  }
+
+  it("reserves without depleting on-hand and refuses when copies are not available", async () => {
+    const { t, asStaff } = await createStaffTest();
+    const { titleId, schoolRequestId } = await seedTitleAndRequest(
+      t,
+      asStaff,
+      10,
+    );
+
+    const reservationId = await t.run(async (ctx) =>
+      reserveTitle(ctx, {
+        titleId,
+        schoolRequestId,
+        quantity: 6,
+        sourceId: `reservation:${schoolRequestId}:${titleId}`,
+      }),
+    );
+    const again = await t.run(async (ctx) =>
+      reserveTitle(ctx, {
+        titleId,
+        schoolRequestId,
+        quantity: 6,
+        sourceId: `reservation:${schoolRequestId}:${titleId}`,
+      }),
+    );
+
+    const title = await t.run(async (ctx) => ctx.db.get(titleId));
+    const reservations = await t.run(async (ctx) =>
+      ctx.db.query("reservations").collect(),
+    );
+    expect(again).toBe(reservationId);
+    expect(title).toEqual(
+      expect.objectContaining({
+        quantityOnHand: 10,
+        activeReservedQuantity: 6,
+      }),
+    );
+    expect(reservations).toEqual([
+      expect.objectContaining({
+        _id: reservationId,
+        quantity: 6,
+        active: true,
+      }),
+    ]);
+
+    await expect(
+      t.run(async (ctx) =>
+        reserveTitle(ctx, {
+          titleId,
+          schoolRequestId,
+          quantity: 5,
+          sourceId: `reservation:other:${titleId}`,
+        }),
+      ),
+    ).rejects.toThrow("Those copies are no longer available");
+  });
+
+  it("releases remaining quantity once and no-ops an inactive reservation", async () => {
+    const { t, asStaff } = await createStaffTest();
+    const { titleId, schoolRequestId } = await seedTitleAndRequest(
+      t,
+      asStaff,
+      10,
+    );
+    const reservationId = await t.run(async (ctx) =>
+      reserveTitle(ctx, {
+        titleId,
+        schoolRequestId,
+        quantity: 6,
+        sourceId: `reservation:${schoolRequestId}:${titleId}`,
+      }),
+    );
+    const sourceId = `release:${schoolRequestId}:${titleId}`;
+
+    await t.run(async (ctx) =>
+      releaseReservation(ctx, { reservationId, sourceId }),
+    );
+    await t.run(async (ctx) =>
+      releaseReservation(ctx, { reservationId, sourceId }),
+    );
+
+    const title = await t.run(async (ctx) => ctx.db.get(titleId));
+    const reservation = await t.run(async (ctx) =>
+      ctx.db.get(reservationId),
+    );
+    const history = await asStaff.query(api.inventory.listHistory, {
+      titleId,
+    });
+    expect(title?.activeReservedQuantity).toBe(0);
+    expect(reservation).toEqual(
+      expect.objectContaining({ quantity: 6, active: false }),
+    );
+    expect(
+      history.filter((movement) => movement.kind === "release"),
+    ).toHaveLength(1);
+  });
+
+  it("consumes part of a reservation and restores it during shortage", async () => {
+    const { t, asStaff } = await createStaffTest();
+    const { titleId, schoolRequestId } = await seedTitleAndRequest(
+      t,
+      asStaff,
+      10,
+    );
+    const reservationId = await t.run(async (ctx) =>
+      reserveTitle(ctx, {
+        titleId,
+        schoolRequestId,
+        quantity: 6,
+        sourceId: `reservation:${schoolRequestId}:${titleId}`,
+      }),
+    );
+
+    const consumeSource = `reservationConsumption:${reservationId}`;
+    await t.run(async (ctx) =>
+      consumeReservation(ctx, {
+        reservationId,
+        quantity: 4,
+        sourceId: consumeSource,
+      }),
+    );
+    await t.run(async (ctx) =>
+      consumeReservation(ctx, {
+        reservationId,
+        quantity: 4,
+        sourceId: consumeSource,
+      }),
+    );
+    await t.run(async (ctx) =>
+      appendInventoryMovement(ctx, {
+        titleId,
+        kind: "donation",
+        quantity: 8,
+        sourceId: "donation:visit:title:1",
+      }),
+    );
+
+    let title = await t.run(async (ctx) => ctx.db.get(titleId));
+    expect(title).toEqual(
+      expect.objectContaining({
+        quantityOnHand: 2,
+        activeReservedQuantity: 2,
+      }),
+    );
+
+    const restoreSource = `reverse:reservationConsumption:${reservationId}`;
+    await t.run(async (ctx) =>
+      restoreReservation(ctx, {
+        reservationId,
+        quantity: 4,
+        sourceId: restoreSource,
+      }),
+    );
+    await t.run(async (ctx) =>
+      restoreReservation(ctx, {
+        reservationId,
+        quantity: 4,
+        sourceId: restoreSource,
+      }),
+    );
+
+    title = await t.run(async (ctx) => ctx.db.get(titleId));
+    const reservation = await t.run(async (ctx) =>
+      ctx.db.get(reservationId),
+    );
+    expect(title).toEqual(
+      expect.objectContaining({
+        quantityOnHand: 2,
+        activeReservedQuantity: 6,
+      }),
+    );
+    expect(reservation).toEqual(
+      expect.objectContaining({ quantity: 6, active: true }),
+    );
+  });
+
+  it("no-ops a repeated consume after the reservation is fully consumed", async () => {
+    const { t, asStaff } = await createStaffTest();
+    const { titleId, schoolRequestId } = await seedTitleAndRequest(
+      t,
+      asStaff,
+      10,
+    );
+    const reservationId = await t.run(async (ctx) =>
+      reserveTitle(ctx, {
+        titleId,
+        schoolRequestId,
+        quantity: 4,
+        sourceId: `reservation:${schoolRequestId}:${titleId}`,
+      }),
+    );
+    const sourceId = `reservationConsumption:${reservationId}`;
+    await t.run(async (ctx) =>
+      consumeReservation(ctx, {
+        reservationId,
+        quantity: 4,
+        sourceId,
+      }),
+    );
+    await t.run(async (ctx) =>
+      consumeReservation(ctx, {
+        reservationId,
+        quantity: 4,
+        sourceId,
+      }),
+    );
+
+    const title = await t.run(async (ctx) => ctx.db.get(titleId));
+    const reservation = await t.run(async (ctx) =>
+      ctx.db.get(reservationId),
+    );
+    expect(title?.activeReservedQuantity).toBe(0);
+    expect(reservation).toEqual(
+      expect.objectContaining({ quantity: 0, active: false }),
+    );
+  });
+
+  it("refuses reservation kinds on append and reverse, and consume on inactive", async () => {
+    const { t, asStaff } = await createStaffTest();
+    const { titleId, schoolRequestId } = await seedTitleAndRequest(
+      t,
+      asStaff,
+      10,
+    );
+    const reservationId = await t.run(async (ctx) =>
+      reserveTitle(ctx, {
+        titleId,
+        schoolRequestId,
+        quantity: 3,
+        sourceId: `reservation:${schoolRequestId}:${titleId}`,
+      }),
+    );
+
+    await expect(
+      t.run(async (ctx) =>
+        appendInventoryMovement(ctx, {
+          titleId,
+          kind: "reservation" as never,
+          quantity: 1,
+          sourceId: "reservation:bypass",
+        }),
+      ),
+    ).rejects.toThrow("Reservation stock changes");
+
+    await t.run(async (ctx) =>
+      releaseReservation(ctx, {
+        reservationId,
+        sourceId: `release:${schoolRequestId}:${titleId}`,
+      }),
+    );
+
+    await expect(
+      t.run(async (ctx) =>
+        consumeReservation(ctx, {
+          reservationId,
+          quantity: 1,
+          sourceId: "reservationConsumption:inactive",
+        }),
+      ),
+    ).rejects.toThrow("inactive");
+
+    await expect(
+      t.run(async (ctx) =>
+        reverseInventoryMovement(
+          ctx,
+          `reservation:${schoolRequestId}:${titleId}`,
+        ),
+      ),
+    ).rejects.toThrow("Reservation stock changes");
+
+    await expect(
+      t.run(async (ctx) =>
+        appendInventoryMovement(ctx, {
+          titleId,
+          kind: "release" as never,
+          quantity: 1,
+          sourceId: "release:bypass",
+        }),
+      ),
+    ).rejects.toThrow("Reservation stock changes");
+    await expect(
+      t.run(async (ctx) =>
+        appendInventoryMovement(ctx, {
+          titleId,
+          kind: "reservationConsumption" as never,
+          quantity: 1,
+          sourceId: "reservationConsumption:bypass",
+        }),
+      ),
+    ).rejects.toThrow("Reservation stock changes");
   });
 });

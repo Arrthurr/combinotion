@@ -6,11 +6,10 @@ import {
   type MutationCtx,
 } from "./_generated/server";
 import { catalogText, normalizeIsbn, stripNotionMarkdown } from "../lib/domain/catalog";
-import { availableToRequest } from "./lib/availability";
+import { availableQuantity, reviewState } from "../lib/domain/inventory";
 import { requireStaff } from "./lib/auth";
 import { findTitleByIsbn } from "./lib/catalog";
 import { required } from "./lib/validation";
-import { reviewState } from "../lib/domain/inventory";
 import { isPublicRequestsOpen, orgThreshold } from "../lib/domain/orgSettings";
 import { loadOrgSettings } from "./orgSettings";
 import { outstandingQuantity } from "../lib/domain/orders";
@@ -154,10 +153,7 @@ export const projectRequestable = (titles: TitleProjection[]) =>
       title: stripNotionMarkdown(title.title),
       author: stripNotionMarkdown(title.author),
       isbn: normalizeIsbn(title.isbn) || title.isbn,
-      availableQuantity: availableToRequest(
-        title.quantityOnHand,
-        title.activeReservedQuantity,
-      ),
+      availableQuantity: availableQuantity(title),
       ...(title.coverUrl === undefined ? {} : { coverUrl: title.coverUrl }),
     }))
     .filter((title) => title.availableQuantity > 0);
@@ -357,10 +353,7 @@ export const getTitleWorkspace = query({
       stock: {
         quantityOnHand: title.quantityOnHand,
         activeReservedQuantity: title.activeReservedQuantity,
-        availableQuantity: availableToRequest(
-          title.quantityOnHand,
-          title.activeReservedQuantity,
-        ),
+        availableQuantity: availableQuantity(title),
         lowStock: stockReview.lowStock,
         shortage: stockReview.shortage,
         reorderNeeded: title.reorderNeeded,

@@ -8,6 +8,8 @@ import {
 } from "./_generated/server";
 import {
   appendInventoryMovement,
+  consumeReservation,
+  restoreReservation,
   reverseInventoryMovement,
 } from "./inventory";
 import { requireStaff } from "./lib/auth";
@@ -88,17 +90,14 @@ async function reverseVisitEffects(
     if (request.status !== "active") {
       continue;
     }
-    await reverseInventoryMovement(
-      ctx,
-      reservationConsumptionSourceId(
+    await restoreReservation(ctx, {
+      reservationId: reservation._id,
+      quantity: book.consumedQuantity,
+      sourceId: `reverse:${reservationConsumptionSourceId(
         visit._id,
         book.consumedReservationId,
         visit.effectGeneration,
-      ),
-    );
-    await ctx.db.patch(reservation._id, {
-      quantity: reservation.quantity + book.consumedQuantity,
-      active: true,
+      )}`,
     });
   }
 }
@@ -175,20 +174,14 @@ async function insertVisitBooks(
       if (!reservation) {
         throw new Error("Reservation not found");
       }
-      await appendInventoryMovement(ctx, {
-        titleId: book.titleId,
-        kind: "reservationConsumption",
+      await consumeReservation(ctx, {
+        reservationId: reservation._id,
         quantity: consumption.consumedQuantity,
         sourceId: reservationConsumptionSourceId(
           visit._id,
           reservation._id,
           visit.effectGeneration,
         ),
-      });
-      const remaining = reservation.quantity - consumption.consumedQuantity;
-      await ctx.db.patch(reservation._id, {
-        quantity: remaining,
-        active: remaining > 0,
       });
     }
     await ctx.db.insert("visitBooks", {

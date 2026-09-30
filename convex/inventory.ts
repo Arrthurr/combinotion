@@ -11,6 +11,7 @@ import { orgThreshold } from "../lib/domain/orgSettings";
 import { positiveInteger, required } from "./lib/validation";
 import {
   applyMovement,
+  availableQuantity,
   reviewState,
   reverseMovement,
 } from "../lib/domain/inventory";
@@ -19,6 +20,16 @@ import type {
   StockState,
 } from "../lib/domain/types";
 
+type PhysicalMovementKind = Extract<
+  MovementKind,
+  "openingBalance" | "receipt" | "adjustment" | "donation"
+>;
+
+type ReservationMovementKind = Extract<
+  MovementKind,
+  "reservation" | "release" | "reservationConsumption"
+>;
+
 type MovementInput = {
   titleId: Id<"titles">;
   kind: MovementKind;
@@ -26,6 +37,9 @@ type MovementInput = {
   reason?: string;
   sourceId: string;
 };
+
+const RESERVATION_KIND_ERROR =
+  "Reservation stock changes go through reserve, release, consume, or restore";
 
 async function persistInventoryMovement(
   ctx: MutationCtx,
@@ -47,14 +61,28 @@ async function persistInventoryMovement(
   });
 }
 
-export async function appendInventoryMovement(
+function isReservationKind(
+  kind: MovementKind,
+): kind is ReservationMovementKind {
+  return (
+    kind === "reservation" ||
+    kind === "release" ||
+    kind === "reservationConsumption"
+  );
+}
+
+async function movementForSource(ctx: MutationCtx, sourceId: string) {
+  return await ctx.db
+    .query("inventoryMovements")
+    .withIndex("by_source", (q) => q.eq("sourceId", sourceId))
+    .unique();
+}
+
+async function writeMovement(
   ctx: MutationCtx,
   input: MovementInput,
 ) {
-  const existing = await ctx.db
-    .query("inventoryMovements")
-    .withIndex("by_source", (q) => q.eq("sourceId", input.sourceId))
-    .unique();
+  const existing = await movementForSource(ctx, input.sourceId);
   if (existing) {
     return existing.titleId;
   }
@@ -75,6 +103,22 @@ export async function appendInventoryMovement(
   });
   await persistInventoryMovement(ctx, input, createdAt, next);
   return input.titleId;
+}
+
+export async function appendInventoryMovement(
+  ctx: MutationCtx,
+  input: {
+    titleId: Id<"titles">;
+    kind: PhysicalMovementKind;
+    quantity: number;
+    reason?: string;
+    sourceId: string;
+  },
+) {
+  if (isReservationKind(input.kind)) {
+    throw new Error(RESERVATION_KIND_ERROR);
+  }
+  return await writeMovement(ctx, input);
 }
 
 function oppositeMovement(
@@ -105,18 +149,15 @@ export async function reverseInventoryMovement(
   ctx: MutationCtx,
   sourceId: string,
 ) {
-  const original = await ctx.db
-    .query("inventoryMovements")
-    .withIndex("by_source", (q) => q.eq("sourceId", sourceId))
-    .unique();
+  const original = await movementForSource(ctx, sourceId);
   if (!original) {
     return null;
   }
+  if (isReservationKind(original.kind)) {
+    throw new Error(RESERVATION_KIND_ERROR);
+  }
   const reverseSourceId = `reverse:${sourceId}`;
-  const existingReverse = await ctx.db
-    .query("inventoryMovements")
-    .withIndex("by_source", (q) => q.eq("sourceId", reverseSourceId))
-    .unique();
+  const existingReverse = await movementForSource(ctx, reverseSourceId);
   if (existingReverse) {
     return existingReverse.titleId;
   }
@@ -146,6 +187,153 @@ export async function reverseInventoryMovement(
     next,
   );
   return original.titleId;
+}
+
+async function requireReservation(
+  ctx: MutationCtx,
+  reservationId: Id<"reservations">,
+) {
+  const reservation = await ctx.db.get(reservationId);
+  if (!reservation) {
+    throw new Error("Reservation not found");
+  }
+  return reservation;
+}
+
+export async function reserveTitle(
+  ctx: MutationCtx,
+  input: {
+    titleId: Id<"titles">;
+    schoolRequestId: Id<"schoolRequests">;
+    quantity: number;
+    sourceId: string;
+  },
+) {
+  positiveInteger(input.quantity);
+  const existing = await movementForSource(ctx, input.sourceId);
+  if (existing) {
+    const reservations = await ctx.db
+      .query("reservations")
+      .withIndex("by_request", (q) =>
+        q.eq("schoolRequestId", input.schoolRequestId),
+      )
+      .collect();
+    const match = reservations.find(
+      (row) => row.titleId === existing.titleId,
+    );
+    if (!match) {
+      throw new Error("Reservation not found");
+    }
+    return match._id;
+  }
+
+  const title = await ctx.db.get(input.titleId);
+  if (!title) {
+    throw new Error("Title not found");
+  }
+  if (input.quantity > availableQuantity(title)) {
+    throw new Error("Those copies are no longer available");
+  }
+
+  const reservationId = await ctx.db.insert("reservations", {
+    titleId: input.titleId,
+    schoolRequestId: input.schoolRequestId,
+    quantity: input.quantity,
+    active: true,
+  });
+  await writeMovement(ctx, {
+    titleId: input.titleId,
+    kind: "reservation",
+    quantity: input.quantity,
+    sourceId: input.sourceId,
+  });
+  return reservationId;
+}
+
+export async function releaseReservation(
+  ctx: MutationCtx,
+  input: {
+    reservationId: Id<"reservations">;
+    sourceId: string;
+  },
+) {
+  const reservation = await requireReservation(ctx, input.reservationId);
+  if (!reservation.active) {
+    return reservation._id;
+  }
+  const existing = await movementForSource(ctx, input.sourceId);
+  if (existing) {
+    return reservation._id;
+  }
+  await writeMovement(ctx, {
+    titleId: reservation.titleId,
+    kind: "release",
+    quantity: reservation.quantity,
+    sourceId: input.sourceId,
+  });
+  await ctx.db.patch(reservation._id, { active: false });
+  return reservation._id;
+}
+
+export async function consumeReservation(
+  ctx: MutationCtx,
+  input: {
+    reservationId: Id<"reservations">;
+    quantity: number;
+    sourceId: string;
+  },
+) {
+  positiveInteger(input.quantity);
+  const existing = await movementForSource(ctx, input.sourceId);
+  if (existing) {
+    return input.reservationId;
+  }
+  const reservation = await requireReservation(ctx, input.reservationId);
+  if (!reservation.active) {
+    throw new Error("Reservation is inactive");
+  }
+  if (input.quantity > reservation.quantity) {
+    throw new Error("Cannot consume more than the reservation holds");
+  }
+  await writeMovement(ctx, {
+    titleId: reservation.titleId,
+    kind: "reservationConsumption",
+    quantity: input.quantity,
+    sourceId: input.sourceId,
+  });
+  const remaining = reservation.quantity - input.quantity;
+  await ctx.db.patch(reservation._id, {
+    quantity: remaining,
+    active: remaining > 0,
+  });
+  return reservation._id;
+}
+
+export async function restoreReservation(
+  ctx: MutationCtx,
+  input: {
+    reservationId: Id<"reservations">;
+    quantity: number;
+    sourceId: string;
+  },
+) {
+  positiveInteger(input.quantity);
+  const existing = await movementForSource(ctx, input.sourceId);
+  if (existing) {
+    return input.reservationId;
+  }
+  const reservation = await requireReservation(ctx, input.reservationId);
+  await writeMovement(ctx, {
+    titleId: reservation.titleId,
+    kind: "reservation",
+    quantity: input.quantity,
+    sourceId: input.sourceId,
+  });
+  await ctx.db.patch(reservation._id, {
+    quantity: reservation.quantity + input.quantity,
+    active: true,
+  });
+  return reservation._id;
 }
 
 export const listReview = query({

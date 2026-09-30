@@ -1,5 +1,4 @@
-import { applyMovement, availableQuantity } from "./inventory";
-import type { MatchStatus, Movement, StockState } from "./types";
+import type { MatchStatus } from "./types";
 
 type MatchableSchool = {
   id: string;
@@ -13,33 +12,6 @@ type SchoolMatch =
 
 export const normalizeSchool = (value: string) =>
   value.trim().toLocaleLowerCase().replace(/\s+/g, " ");
-
-function reservationMovement(
-  kind: "reservation" | "release",
-  quantity: number,
-): Movement {
-  return {
-    id: kind,
-    kind,
-    quantity,
-    sourceId: kind,
-    createdAt: 0,
-  };
-}
-
-export function reserve(state: StockState, quantity: number) {
-  if (!Number.isInteger(quantity) || quantity < 1) {
-    throw new Error("Choose at least one copy");
-  }
-  if (quantity > availableQuantity(state)) {
-    throw new Error("Those copies are no longer available");
-  }
-  return applyMovement(state, reservationMovement("reservation", quantity));
-}
-
-export function release(state: StockState, quantity: number) {
-  return applyMovement(state, reservationMovement("release", quantity));
-}
 
 export function matchSchool({
   name,

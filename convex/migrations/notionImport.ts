@@ -10,7 +10,7 @@ import {
 } from "../../lib/domain/notionImport";
 import { normalizeSchool } from "../../lib/domain/requests";
 import { findTitleByIsbn } from "../lib/catalog";
-import { appendInventoryMovement, writeOpeningBalance } from "../inventory";
+import { reserveTitle, writeOpeningBalance } from "../inventory";
 
 async function importedId(ctx: MutationCtx, sourceId: string) {
   const existing = await ctx.db
@@ -134,15 +134,9 @@ async function applyRows(
               if (!titleDoc) {
                 throw new Error(`Title not found for request ${row.notionId}`);
               }
-              await ctx.db.insert("reservations", {
+              await reserveTitle(ctx, {
                 titleId: titleDoc._id,
                 schoolRequestId: requestId,
-                quantity: line.quantity,
-                active: true,
-              });
-              await appendInventoryMovement(ctx, {
-                titleId: titleDoc._id,
-                kind: "reservation",
                 quantity: line.quantity,
                 sourceId: `reservation:${requestId}:${titleDoc._id}`,
               });
