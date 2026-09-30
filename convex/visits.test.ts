@@ -483,6 +483,57 @@ describe("visits", () => {
     );
   });
 
+  it.each(["edit", "delete"] as const)(
+    "allows visit %s after a cancelled request is deleted without restoring its claim",
+    async (operation) => {
+      const { t, asStaff } = await createStaffTest();
+      const schoolId = await createSchool(asStaff);
+      const readerId = await createPerson(asStaff, "Pat Reader");
+      const titleId = await createTitle(asStaff, 10);
+      await submitRequest(t, 6, "Pat");
+      const [request] = await asStaff.query(api.schoolRequests.listActive, {});
+      const requestId = request._id;
+      const args = visitArgs({
+        schoolId,
+        readerPersonIds: [readerId],
+        titleId,
+        donatedQuantity: 4,
+      });
+      const visitId = await asStaff.mutation(api.visits.saveVisit, args);
+      await asStaff.mutation(api.schoolRequests.resolveRequest, {
+        requestId,
+        resolution: "cancelled",
+      });
+      await t.run(async (ctx) => ctx.db.delete(requestId));
+
+      if (operation === "edit") {
+        await asStaff.mutation(api.visits.saveVisit, {
+          ...args,
+          visitId,
+          books: [{ titleId, donatedQuantity: 3, readAloud: true }],
+        });
+        const visit = await asStaff.query(api.visits.getVisit, { visitId });
+        expect(visit?.books).toEqual([
+          expect.objectContaining({ consumptionStatus: "none", consumedQuantity: 0 }),
+        ]);
+      } else {
+        await asStaff.mutation(api.visits.deleteVisit, { visitId });
+        await expect(asStaff.query(api.visits.getVisit, { visitId })).resolves.toBeNull();
+      }
+      const review = await asStaff.query(api.inventory.listReview, {});
+      expect(review.find((title) => title._id === titleId)).toEqual(
+        expect.objectContaining({
+          quantityOnHand: operation === "edit" ? 7 : 10,
+          activeReservedQuantity: 0,
+        }),
+      );
+      const history = await asStaff.query(api.inventory.listHistory, { titleId });
+      expect(history.filter((movement) =>
+        movement.sourceId.startsWith("reverse:reservationConsumption:"),
+      )).toEqual([]);
+    },
+  );
+
   it("does not rematch a cancelled request when the visit is edited", async () => {
     const { t, asStaff } = await createStaffTest();
     const schoolId = await createSchool(asStaff);
@@ -587,6 +638,139 @@ describe("visits", () => {
       }),
     );
     expect(exceptions).toEqual([]);
+  });
+
+  it("balances every generation across repeated saves and repeated deletion", async () => {
+    const { t, asStaff } = await createStaffTest();
+    const schoolId = await createSchool(asStaff);
+    const readerId = await createPerson(asStaff, "Pat Reader");
+    const titleId = await createTitle(asStaff, 10);
+    await submitRequest(t, 6, "Pat");
+    const args = visitArgs({
+      schoolId,
+      readerPersonIds: [readerId],
+      titleId,
+      donatedQuantity: 10,
+    });
+    const visitId = await asStaff.mutation(api.visits.saveVisit, args);
+    const created = await asStaff.query(api.visits.getVisit, { visitId });
+    const reservationId = created?.books[0].consumedReservationId;
+    expect(reservationId).toBeDefined();
+    expect(created?.books[0].consumedQuantity).toBe(6);
+
+    // All physical copies are donated: applying replacement before undo fails.
+    for (const generation of [2, 3]) {
+      await asStaff.mutation(api.visits.saveVisit, { ...args, visitId });
+      const visit = await asStaff.query(api.visits.getVisit, { visitId });
+      expect(visit?.effectGeneration).toBe(generation);
+      expect(visit?.books).toEqual([
+        expect.objectContaining({
+          donatedQuantity: 10,
+          consumedQuantity: 6,
+          consumedReservationId: reservationId,
+        }),
+      ]);
+      expect(visit?.readers).toHaveLength(1);
+      const [title] = await asStaff.query(api.inventory.listReview, {});
+      expect(title).toEqual(expect.objectContaining({
+        quantityOnHand: 0,
+        activeReservedQuantity: 0,
+      }));
+    }
+    await asStaff.mutation(api.visits.deleteVisit, { visitId });
+    await expect(asStaff.mutation(api.visits.deleteVisit, { visitId })).resolves.toBeNull();
+    const [title] = await asStaff.query(api.inventory.listReview, {});
+    expect(title).toEqual(expect.objectContaining({
+      quantityOnHand: 10,
+      activeReservedQuantity: 6,
+    }));
+    const history = await asStaff.query(api.inventory.listHistory, { titleId });
+    const visitMovements = history.filter((movement) => movement.sourceId.includes(visitId));
+    expect(visitMovements).toHaveLength(12);
+    for (const generation of [1, 2, 3]) {
+      expect(visitMovements).toEqual(expect.arrayContaining([
+        expect.objectContaining({
+          sourceId: `donation:${visitId}:${titleId}:${generation}`,
+          kind: "donation", quantity: 10,
+        }),
+        expect.objectContaining({
+          sourceId: `reverse:donation:${visitId}:${titleId}:${generation}`,
+          kind: "receipt", quantity: 10,
+        }),
+        expect.objectContaining({
+          sourceId: `reservationConsumption:${visitId}:${reservationId}:${generation}`,
+          kind: "reservationConsumption", quantity: 6,
+        }),
+        expect.objectContaining({
+          sourceId: `reverse:reservationConsumption:${visitId}:${reservationId}:${generation}`,
+          kind: "reservation", quantity: 6,
+        }),
+      ]));
+    }
+    await expect(asStaff.query(api.visits.listTitleParticipation, { titleId }))
+      .resolves.toEqual({ donatedQuantity: 0, readAloudCount: 0 });
+    await expect(asStaff.query(api.visits.listPersonParticipation, { personId: readerId }))
+      .resolves.toEqual({ readerVisitCount: 0, staffVisitCount: 0 });
+    await expect(asStaff.query(api.visits.listVisits, {})).resolves.toEqual([]);
+  });
+
+  it("rolls back undo, generation, and children when replacement cannot be donated", async () => {
+    const { t, asStaff } = await createStaffTest();
+    const schoolId = await createSchool(asStaff);
+    const readerId = await createPerson(asStaff, "Pat Reader");
+    const replacementReaderId = await createPerson(asStaff, "Sam Reader");
+    const titleId = await createTitle(asStaff, 10);
+    await submitRequest(t, 6, "Pat");
+    const args = visitArgs({
+      schoolId,
+      readerPersonIds: [readerId],
+      titleId,
+      donatedQuantity: 4,
+    });
+    const visitId = await asStaff.mutation(api.visits.saveVisit, args);
+    const before = await asStaff.query(api.visits.getVisit, { visitId });
+    const history = await asStaff.query(api.inventory.listHistory, { titleId });
+    await expect(asStaff.mutation(api.visits.saveVisit, {
+      ...args,
+      visitId,
+      readerPersonIds: [replacementReaderId],
+      books: [{ titleId, donatedQuantity: 11, readAloud: false }],
+    })).rejects.toThrow("below zero");
+    await expect(asStaff.query(api.visits.getVisit, { visitId })).resolves.toEqual(before);
+    await expect(asStaff.query(api.inventory.listHistory, { titleId })).resolves.toEqual(history);
+    const [title] = await asStaff.query(api.inventory.listReview, {});
+    expect(title).toEqual(expect.objectContaining({
+      quantityOnHand: 6,
+      activeReservedQuantity: 2,
+    }));
+  });
+
+  it("matches a new request when the preferred request was cancelled", async () => {
+    const { t, asStaff } = await createStaffTest();
+    const schoolId = await createSchool(asStaff);
+    const readerId = await createPerson(asStaff, "Pat Reader");
+    const titleId = await createTitle(asStaff, 10);
+    await submitRequest(t, 6, "Pat");
+    const [request] = await asStaff.query(api.schoolRequests.listActive, {});
+    const args = visitArgs({
+      schoolId, readerPersonIds: [readerId], titleId, donatedQuantity: 4,
+    });
+    const visitId = await asStaff.mutation(api.visits.saveVisit, args);
+    const before = await asStaff.query(api.visits.getVisit, { visitId });
+    await asStaff.mutation(api.schoolRequests.resolveRequest, {
+      requestId: request._id, resolution: "cancelled",
+    });
+    await submitRequest(t, 2, "Sam");
+    await asStaff.mutation(api.visits.saveVisit, { ...args, visitId });
+    const after = await asStaff.query(api.visits.getVisit, { visitId });
+    expect(after?.books[0]).toEqual(expect.objectContaining({
+      consumptionStatus: "consumed", consumedQuantity: 2,
+    }));
+    expect(after?.books[0].consumedReservationId).not.toBe(before?.books[0].consumedReservationId);
+    const [title] = await asStaff.query(api.inventory.listReview, {});
+    expect(title).toEqual(expect.objectContaining({
+      quantityOnHand: 6, activeReservedQuantity: 0,
+    }));
   });
 
   it("rejects empty readers, missing schools, and empty book effects", async () => {
