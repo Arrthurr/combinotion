@@ -49,19 +49,44 @@ export type ImportRow =
     }
   | { kind: "openingBalance"; isbn: string; quantity: number; reason: string };
 
-export type InvalidImportRow = { sourceId: string; reason: string };
+export type ImportSourceId = ReturnType<typeof sourceFor>;
+
+export type InvalidImportRow = { sourceId: ImportSourceId; reason: string };
+
+export type PlannedImportWrite = {
+  sourceId: ImportSourceId;
+  kind: ImportRow["kind"];
+};
 
 export type ImportDryRunReport = {
   validCount: number;
   invalid: InvalidImportRow[];
-  wouldWrite: { sourceId: string; kind: ImportRow["kind"] }[];
+  skipped: InvalidImportRow[];
+  reused: PlannedImportWrite[];
+  wouldWrite: PlannedImportWrite[];
   digest: string;
 };
 
-export function previewDigest(
-  wouldWrite: ImportDryRunReport["wouldWrite"],
-): string {
-  return fingerprintOf(wouldWrite);
+const KIND_RANK: Record<ImportRow["kind"], number> = {
+  person: 0,
+  school: 1,
+  title: 2,
+  openingBalance: 3,
+  review: 4,
+  request: 5,
+  visit: 6,
+};
+
+export function orderedImportRows(rows: ImportRow[]): ImportRow[] {
+  return [...rows].sort((left, right) => {
+    const kindDelta = KIND_RANK[left.kind] - KIND_RANK[right.kind];
+    if (kindDelta !== 0) return kindDelta;
+    return sourceFor(left).localeCompare(sourceFor(right));
+  });
+}
+
+export function previewDigest(rows: ImportRow[]): string {
+  return fingerprintOf(orderedImportRows(rows));
 }
 
 function requiredText(value: unknown, label: string) {
@@ -146,9 +171,148 @@ export function validateImportRow(row: ImportRow): string[] {
   return errors;
 }
 
-export function dryRunImport(rows: ImportRow[]): ImportDryRunReport {
+export type ImportCatalog = {
+  importedSourceIds: ReadonlySet<string>;
+  titles: ReadonlyMap<
+    string,
+    { quantityOnHand: number; hasMovements: boolean }
+  >;
+};
+
+type BatchIndex = {
+  people: Set<string>;
+  schools: Set<string>;
+  isbns: Set<string>;
+};
+
+function indexBatch(rows: ImportRow[]): BatchIndex {
+  const people = new Set<string>();
+  const schools = new Set<string>();
+  const isbns = new Set<string>();
+  for (const row of rows) {
+    if (row.kind === "person") people.add(row.notionId);
+    if (row.kind === "school") schools.add(row.notionId);
+    if (row.kind === "title") isbns.add(row.isbn);
+  }
+  return { people, schools, isbns };
+}
+
+function hasTitle(isbn: string, batch: BatchIndex, catalog: ImportCatalog) {
+  return batch.isbns.has(isbn) || catalog.titles.has(isbn);
+}
+
+function hasPerson(notionId: string, batch: BatchIndex, catalog: ImportCatalog) {
+  return (
+    batch.people.has(notionId) ||
+    catalog.importedSourceIds.has(notionSourceId("person", notionId))
+  );
+}
+
+function hasSchool(notionId: string, batch: BatchIndex, catalog: ImportCatalog) {
+  return (
+    batch.schools.has(notionId) ||
+    catalog.importedSourceIds.has(notionSourceId("school", notionId))
+  );
+}
+
+function unique(values: string[]) {
+  return [...new Set(values)];
+}
+
+function relationOutcome(
+  row: ImportRow,
+  batch: BatchIndex,
+  catalog: ImportCatalog,
+): { errors: string[]; skipped: string[] } {
+  switch (row.kind) {
+    case "review":
+      return {
+        errors: hasTitle(row.isbn, batch, catalog)
+          ? []
+          : [`Title not found for review ${row.notionId}`],
+        skipped: [],
+      };
+    case "openingBalance": {
+      if (!hasTitle(row.isbn, batch, catalog)) {
+        return {
+          errors: [`Title not found for opening balance ${row.isbn}`],
+          skipped: [],
+        };
+      }
+      if (catalog.importedSourceIds.has(sourceFor(row))) {
+        return { errors: [], skipped: [] };
+      }
+      const existing = catalog.titles.get(row.isbn);
+      if (existing && (existing.quantityOnHand !== 0 || existing.hasMovements)) {
+        return {
+          errors: [
+            "Opening balance can only be recorded when on-hand is zero and the title has no movements",
+          ],
+          skipped: [],
+        };
+      }
+      return { errors: [], skipped: [] };
+    }
+    case "request": {
+      if (row.disposition.kind !== "verifiedActive") {
+        return { errors: [], skipped: [] };
+      }
+      return {
+        errors: unique(
+          row.disposition.lines.flatMap((line) =>
+            hasTitle(line.isbn, batch, catalog)
+              ? []
+              : [`Title not found for request ${row.notionId}`],
+          ),
+        ),
+        skipped: [],
+      };
+    }
+    case "visit": {
+      const errors: string[] = [];
+      const skipped: string[] = [];
+      if (!hasSchool(row.schoolNotionId, batch, catalog)) {
+        errors.push(`School not found for visit ${row.notionId}`);
+      }
+      errors.push(
+        ...unique(
+          row.books.flatMap((book) =>
+            hasTitle(book.isbn, batch, catalog)
+              ? []
+              : [`Title not found for visit ${row.notionId}`],
+          ),
+        ),
+      );
+      const resolvedReaders = row.readerNotionIds.filter((id) =>
+        hasPerson(id, batch, catalog),
+      );
+      if (resolvedReaders.length === 0) {
+        errors.push(`Person not found for visit ${row.notionId}`);
+      } else {
+        for (const id of row.readerNotionIds) {
+          if (!hasPerson(id, batch, catalog)) {
+            skipped.push(`Skipping unresolved reader ${id}`);
+          }
+        }
+      }
+      for (const id of row.staffNotionIds) {
+        if (!hasPerson(id, batch, catalog)) {
+          skipped.push(`Skipping unresolved staff ${id}`);
+        }
+      }
+      return { errors, skipped };
+    }
+    default:
+      return { errors: [], skipped: [] };
+  }
+}
+
+export function planImport(
+  rows: ImportRow[],
+  catalog?: ImportCatalog,
+): ImportDryRunReport {
   const invalid: InvalidImportRow[] = [];
-  const wouldWrite: ImportDryRunReport["wouldWrite"] = [];
+  const valid: ImportRow[] = [];
   const seen = new Set<string>();
   for (const row of rows) {
     const sourceId = sourceFor(row);
@@ -161,14 +325,55 @@ export function dryRunImport(rows: ImportRow[]): ImportDryRunReport {
       invalid.push({ sourceId, reason: errors.join("; ") });
       continue;
     }
-    wouldWrite.push({ sourceId, kind: row.kind });
+    valid.push(row);
+  }
+  const skipped: InvalidImportRow[] = [];
+  const batch = indexBatch(valid);
+  const executable = catalog
+    ? valid.filter((row) => {
+        const outcome = relationOutcome(row, batch, catalog);
+        skipped.push(
+          ...outcome.skipped.map((reason) => ({
+            sourceId: sourceFor(row),
+            reason,
+          })),
+        );
+        if (outcome.errors.length === 0) return true;
+        invalid.push({
+          sourceId: sourceFor(row),
+          reason: outcome.errors.join("; "),
+        });
+        return false;
+      })
+    : valid;
+  const wouldWrite: PlannedImportWrite[] = [];
+  const reused: PlannedImportWrite[] = [];
+  for (const row of orderedImportRows(executable)) {
+    const sourceId = sourceFor(row);
+    const alreadyImported = catalog?.importedSourceIds.has(sourceId) === true;
+    const reusedTitle = row.kind === "title" && catalog?.titles.has(row.isbn) === true;
+    if (alreadyImported || reusedTitle) {
+      reused.push({ sourceId, kind: row.kind });
+    }
+    if (!alreadyImported) {
+      wouldWrite.push({ sourceId, kind: row.kind });
+    }
   }
   return {
     validCount: wouldWrite.length,
     invalid,
+    skipped,
+    reused,
     wouldWrite,
-    digest: previewDigest(wouldWrite),
+    digest: previewDigest(valid),
   };
+}
+
+export function dryRunImport(
+  rows: ImportRow[],
+  catalog?: ImportCatalog,
+): ImportDryRunReport {
+  return planImport(rows, catalog);
 }
 
 function textField(value: unknown) {

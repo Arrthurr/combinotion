@@ -48,8 +48,13 @@ const rows = rowsFromNotionDump(parsed);
 const report = dryRunImport(rows);
 writeFileSync(resolve(outPath), `${JSON.stringify({ rows }, null, 2)}\n`);
 console.log(`Wrote ${rows.length} rows to ${outPath}`);
-console.log(`Dry-run: ${report.validCount} valid, ${report.invalid.length} invalid`);
+console.log(
+  `Dry-run: ${report.validCount} valid, ${report.invalid.length} invalid, ${report.skipped.length} skipped`,
+);
 for (const row of report.invalid) {
   console.log(`  ${row.sourceId}: ${row.reason}`);
+}
+for (const row of report.skipped) {
+  console.log(`  skip ${row.sourceId}: ${row.reason}`);
 }
 console.log(`Preview digest: ${report.digest}`);

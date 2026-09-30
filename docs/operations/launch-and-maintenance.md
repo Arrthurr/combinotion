@@ -66,7 +66,7 @@ Treat the mapped `notion.json` as untrusted until the dry-run and a spot-check p
 npx tsx scripts/import-notion.ts --export notion.json --counts counts.csv
 ```
 
-The script prints invalid rows and a preview digest. It writes nothing to Convex. Dry-run checks shape and duplicate source ids. It does not prove that a `schoolNotionId` or ISBN exists. A missing school or title fails at apply and rolls the whole write back. A missing reader is skipped with no warning.
+The script prints invalid rows and a preview digest. It writes nothing to Convex. The local dry-run checks shape and duplicate source ids. Staff dry-run against Convex also preflights missing titles, schools, and readers, opening-balance conflicts, and skipped visit staff. Apply executes that planned order and nothing else. A missing school, title, or every reader fails before any write. Unresolved visit staff is an explicit skip.
 
 2. Spot-check the digest against the export. Confirm every visit has a school and readers you recognize. Confirm every `verifiedActive` line is a request that should still reserve stock.
 
@@ -80,7 +80,7 @@ Apply pins to that digest. If you edit the files, run dry-run again. Replay is s
 
 If live titles still show markdown authors or mixed ISBN punctuation, rewrite them in place with `npx convex run migrations/rewriteCatalog:rewriteCatalog --prod`. That command refuses to run when two titles would collapse onto the same ISBN.
 
-4. Historical visits are read-only and do not move stock. Opening balances come from the physical count only, one keep-first movement per title. If the same apply writes a `verifiedActive` reservation for a title and then an opening balance for that title, the opening balance is rejected. Put counts on after titles and before active requests, or apply counts first and active requests in a second run.
+4. Historical visits are read-only and do not move stock. Opening balances come from the physical count only, one keep-first movement per title. Apply orders people, schools, titles, opening balances, reviews, requests, then visits, so a `verifiedActive` reservation in the same file reserves against the counted copies. An opening balance still fails when the title already has inventory movements.
 
 ## Public requests (open / hold)
 

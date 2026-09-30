@@ -82,6 +82,155 @@ describe("Notion import", () => {
     ).rejects.toThrow("Import preview is stale");
   });
 
+  it("rejects apply when a row payload changes but source id and kind do not", async () => {
+    const { asStaff } = await createStaffTest();
+    const report = await asStaff.mutation(api.migrations.notionImport.dryRun, {
+      rows,
+    });
+    const edited = rows.map((row) =>
+      row.kind === "title" ? { ...row, title: "A Better Book" } : row,
+    );
+    await expect(
+      asStaff.mutation(api.migrations.notionImport.apply, {
+        rows: edited,
+        expectedDigest: report.digest,
+      }),
+    ).rejects.toThrow("Import preview is stale");
+  });
+
+  it("preflights missing titles, schools, readers, and opening-balance conflicts", async () => {
+    const { t, asStaff } = await createStaffTest();
+    await t.run(async (ctx) =>
+      ctx.db.insert("titles", {
+        title: "Live Book",
+        author: "Ann",
+        isbn: "9780000000099",
+        quantityOnHand: 3,
+        activeReservedQuantity: 0,
+        reorderNeeded: false,
+      }),
+    );
+
+    const report = await asStaff.mutation(api.migrations.notionImport.dryRun, {
+      rows: [
+        {
+          kind: "review",
+          notionId: "review-missing",
+          isbn: "9780000000001",
+          reviewer: "Riley",
+          score: 1,
+          feedback: "Yes.",
+        },
+        {
+          kind: "visit",
+          notionId: "visit-missing-school",
+          schoolNotionId: "school-1",
+          occurredAt: 1,
+          staffNotionIds: [],
+          readerNotionIds: ["person-1"],
+          books: [{ isbn: "9780000000001", donatedQuantity: 4, readAloud: true }],
+        },
+        {
+          kind: "openingBalance",
+          isbn: "9780000000099",
+          quantity: 12,
+          reason: "Physical count",
+        },
+      ],
+    });
+    expect(report.wouldWrite).toEqual([]);
+    expect(report.invalid.map((row) => row.reason)).toEqual([
+      "Title not found for review review-missing",
+      "School not found for visit visit-missing-school; Title not found for visit visit-missing-school; Person not found for visit visit-missing-school",
+      "Opening balance can only be recorded when on-hand is zero and the title has no movements",
+    ]);
+  });
+
+  it("imports a visit while skipping unresolved staff named in the preview", async () => {
+    const { t, asStaff } = await createStaffTest();
+    const visit = rows.find((row) => row.kind === "visit");
+    if (!visit || visit.kind !== "visit") {
+      throw new Error("Fixture visit is missing");
+    }
+    const withMissingStaff: ImportRow[] = [
+      ...rows.filter((row) => row.kind !== "visit" && row.kind !== "openingBalance"),
+      { ...visit, staffNotionIds: ["missing-staff"] },
+    ];
+    const report = await asStaff.mutation(api.migrations.notionImport.dryRun, {
+      rows: withMissingStaff,
+    });
+    expect(report.skipped).toEqual([
+      {
+        sourceId: "notion:visit:visit-1",
+        reason: "Skipping unresolved staff missing-staff",
+      },
+    ]);
+    await asStaff.mutation(api.migrations.notionImport.apply, {
+      rows: withMissingStaff,
+      expectedDigest: report.digest,
+    });
+    const visitPeople = await t.run(async (ctx) =>
+      ctx.db.query("visitPeople").collect(),
+    );
+    expect(visitPeople).toEqual([expect.objectContaining({ kind: "reader" })]);
+  });
+
+  it("applies shuffled rows as the previewed plan, including opening balance before a live reservation", async () => {
+    const { t, asStaff } = await createStaffTest();
+    const shuffled: ImportRow[] = [
+      {
+        kind: "request",
+        notionId: "request-1",
+        schoolNotionId: "school-1",
+        contactName: "Pat Contact",
+        email: "pat@school.edu",
+        createdAt: 1,
+        disposition: {
+          kind: "verifiedActive",
+          lines: [{ isbn: "9780000000001", quantity: 4 }],
+        },
+      },
+      rows[3]!,
+      rows[4]!,
+      rows[0]!,
+      rows[1]!,
+      rows[2]!,
+    ];
+    const report = await asStaff.mutation(api.migrations.notionImport.dryRun, {
+      rows: shuffled,
+    });
+    expect(report.invalid).toEqual([]);
+    expect(report.skipped).toEqual([]);
+    expect(report.wouldWrite.map((row) => row.kind)).toEqual([
+      "person",
+      "school",
+      "title",
+      "openingBalance",
+      "request",
+      "visit",
+    ]);
+    await asStaff.mutation(api.migrations.notionImport.apply, {
+      rows: shuffled,
+      expectedDigest: report.digest,
+    });
+    const titles = await asStaff.query(api.titles.listTitles, {});
+    expect(titles).toEqual([
+      expect.objectContaining({
+        isbn: "9780000000001",
+        quantityOnHand: 12,
+        activeReservedQuantity: 4,
+      }),
+    ]);
+    const visits = await t.run(async (ctx) => ctx.db.query("visits").collect());
+    const visitPeople = await t.run(async (ctx) =>
+      ctx.db.query("visitPeople").collect(),
+    );
+    expect(visits).toHaveLength(1);
+    expect(visitPeople).toEqual([
+      expect.objectContaining({ kind: "reader" }),
+    ]);
+  });
+
   it("imports history without stock effects and keeps the first opening balance", async () => {
     const { t, asStaff } = await createStaffTest();
     const report = dryRunImport(rows);

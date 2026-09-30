@@ -18,9 +18,14 @@ function argValue(flag: string) {
 
 function printReport(label: string, rows: ImportRow[]) {
   const report = dryRunImport(rows);
-  console.log(`${label}: ${report.validCount} valid, ${report.invalid.length} invalid`);
+  console.log(
+    `${label}: ${report.validCount} valid, ${report.invalid.length} invalid, ${report.skipped.length} skipped`,
+  );
   for (const row of report.invalid) {
     console.log(`  ${row.sourceId}: ${row.reason}`);
+  }
+  for (const row of report.skipped) {
+    console.log(`  skip ${row.sourceId}: ${row.reason}`);
   }
   return report;
 }
