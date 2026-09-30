@@ -1,6 +1,10 @@
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it } from "vitest";
+import { afterAll, describe, expect, it, vi } from "vitest";
 import TitlePage from "@/app/(staff)/books/[titleId]/page";
+
+// Components read configuration at import time, before test hooks run.
+vi.hoisted(() => vi.stubEnv("NEXT_PUBLIC_CONVEX_URL", ""));
+afterAll(() => vi.unstubAllEnvs());
 
 describe("title workspace page", () => {
   it("renders labelled workspace fallback without Convex", async () => {

@@ -1,8 +1,12 @@
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it } from "vitest";
+import { afterAll, describe, expect, it, vi } from "vitest";
 import IntakePage from "@/app/(staff)/intake/page";
 import SettingsPage from "@/app/(staff)/settings/page";
+
+// Components read configuration at import time, before test hooks run.
+vi.hoisted(() => vi.stubEnv("NEXT_PUBLIC_CONVEX_URL", ""));
+afterAll(() => vi.unstubAllEnvs());
 
 describe("intake and settings pages", () => {
   it("renders labelled intake fallback content without Convex", () => {

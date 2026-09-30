@@ -1,7 +1,11 @@
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it } from "vitest";
+import { afterAll, describe, expect, it, vi } from "vitest";
 import ViewsPage from "@/app/(staff)/views/page";
+
+// Components read configuration at import time, before test hooks run.
+vi.hoisted(() => vi.stubEnv("NEXT_PUBLIC_CONVEX_URL", ""));
+afterAll(() => vi.unstubAllEnvs());
 
 describe("operations views page", () => {
   it("renders labelled view fallbacks without Convex", () => {

@@ -1,7 +1,11 @@
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it } from "vitest";
+import { afterAll, describe, expect, it, vi } from "vitest";
 import NewTitlePage from "@/app/(staff)/books/new/page";
+
+// Components read configuration at import time, before test hooks run.
+vi.hoisted(() => vi.stubEnv("NEXT_PUBLIC_CONVEX_URL", ""));
+afterAll(() => vi.unstubAllEnvs());
 
 describe("new title page", () => {
   it("names the add-title heading and not a slug workspace", () => {
