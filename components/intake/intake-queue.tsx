@@ -27,9 +27,6 @@ function IntakeQueueLive() {
   const [filter, setFilter] = useState<Filter>("pending");
   const [status, setStatus] = useState("");
   const items = useQuery(api.intake.listItems, { state: filter });
-  const people = useQuery(api.people.listPeople);
-  const schools = useQuery(api.schools.listSchools);
-  const titles = useQuery(api.titles.listTitles);
   const health = useQuery(api.intake.listHealth);
 
   return (
@@ -62,10 +59,7 @@ function IntakeQueueLive() {
           </button>
         ))}
       </div>
-      {items === undefined ||
-      people === undefined ||
-      schools === undefined ||
-      titles === undefined ? (
+      {items === undefined ? (
         <p className="muted" role="status">
           Loading intake…
         </p>
@@ -77,9 +71,6 @@ function IntakeQueueLive() {
             <PendingItem
               key={item.itemId}
               item={item}
-              people={people}
-              schools={schools}
-              titles={titles}
               onStatus={setStatus}
             />
           ))}

@@ -24,19 +24,20 @@ export function matchSchool({
 }): SchoolMatch {
   const normalizedName = normalizeSchool(name);
   const normalizedAddress = normalizeSchool(address);
-  const exact = schools.find(
+  const exact = schools.filter(
     (school) =>
+      normalizedName !== "" && normalizedAddress !== "" &&
       school.normalizedName === normalizedName &&
       school.normalizedAddress === normalizedAddress,
   );
-  if (exact) {
-    return { matchStatus: "attached", schoolId: exact.id };
+  if (exact.length === 1) {
+    return { matchStatus: "attached", schoolId: exact[0].id };
   }
 
   const partial = schools.some(
     (school) =>
-      school.normalizedName === normalizedName ||
-      school.normalizedAddress === normalizedAddress,
+      (normalizedName !== "" && school.normalizedName === normalizedName) ||
+      (normalizedAddress !== "" && school.normalizedAddress === normalizedAddress),
   );
   return partial
     ? { matchStatus: "ambiguous" }

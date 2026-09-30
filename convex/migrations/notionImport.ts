@@ -8,7 +8,7 @@ import {
   sourceFor,
   type ImportRow,
 } from "../../lib/domain/notionImport";
-import { normalizeSchool } from "../../lib/domain/requests";
+import { resolvePerson, resolveSchool } from "../lib/resolution";
 import { findTitleByIsbn } from "../lib/catalog";
 import { reserveTitle, writeOpeningBalance } from "../inventory";
 
@@ -58,22 +58,22 @@ async function applyRows(
       }
       switch (row.kind) {
         case "person": {
-          const id = await ctx.db.insert("people", {
+          const { personId: id } = await resolvePerson(ctx, {
             name: row.name,
             ...(row.email ? { email: row.email } : {}),
             roles: row.roles,
-          });
+          }, "migration");
           await remember(ctx, sourceId, "person", id);
           notionToId.set(row.notionId, id);
           break;
         }
         case "school": {
-          const id = await ctx.db.insert("schools", {
+          const school = await resolveSchool(ctx, {
             name: row.name,
             address: row.address,
-            normalizedName: normalizeSchool(row.name),
-            normalizedAddress: normalizeSchool(row.address),
-          });
+          }, "migration");
+          if (school.matchStatus !== "attached") throw new Error("Imported school not resolved");
+          const id = school.schoolId;
           await remember(ctx, sourceId, "school", id);
           notionToId.set(row.notionId, id);
           break;

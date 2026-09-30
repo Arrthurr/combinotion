@@ -4,7 +4,7 @@ import { internal } from "../_generated/api";
 import { findTitleByIsbn } from "./catalog";
 import { required } from "./validation";
 import { normalizeIsbn, stripNotionMarkdown } from "../../lib/domain/catalog";
-import { matchSchool, normalizeSchool } from "../../lib/domain/requests";
+import { resolveDonor } from "./resolution";
 import {
   assertFreshFingerprint,
   assertUniqueSourceIds,
@@ -31,6 +31,8 @@ export type ResolveIntakeItemArgs = {
         email?: string;
         schoolName?: string;
         schoolAddress?: string;
+        personId?: Id<"people">;
+        schoolId?: Id<"schools">;
       }
     | { kind: "createTitle"; title: string; author: string; isbn: string }
     | { kind: "dismiss"; reason: string };
@@ -46,10 +48,7 @@ async function comparisonFingerprint(value: string) {
 }
 
 async function catalogLookups(ctx: MutationCtx) {
-  const [titles, people] = await Promise.all([
-    ctx.db.query("titles").collect(),
-    ctx.db.query("people").collect(),
-  ]);
+  const titles = await ctx.db.query("titles").collect();
   return {
     titleByIsbn: (isbn: string) => {
       const normalized = normalizeIsbn(isbn);
@@ -68,11 +67,7 @@ async function catalogLookups(ctx: MutationCtx) {
       );
       return matches.length === 1 ? matches[0]._id : null;
     },
-    personByEmail: (email: string) =>
-      people.find(
-        (person) =>
-          person.email?.toLocaleLowerCase() === email.toLocaleLowerCase(),
-      )?._id ?? null,
+    personByEmail: () => null,
   };
 }
 
@@ -113,6 +108,13 @@ async function applyAutoMatch(
   ctx: MutationCtx,
   candidate: IntakeCandidate,
 ): Promise<IntakeItemState> {
+  if (candidate.kind === "donationApplication") {
+    const resolved = await resolveDonor(ctx, candidate, "automatic");
+    if (!resolved) return { kind: "pending", candidate };
+    return resolvedState(candidate, {
+      kind: "autoApplied", record: { kind: "person", id: resolved.personId },
+    });
+  }
   const match = matchCandidate(candidate, await catalogLookups(ctx));
   if (match.kind === "needsStaff") return { kind: "pending", candidate };
   if (match.kind === "recordReview") {
@@ -157,45 +159,6 @@ async function requireAttachTarget(ctx: MutationCtx, record: IntakeRecordRef) {
       throw new Error(`Unhandled attach target: ${JSON.stringify(unhandled)}`);
     }
   }
-}
-
-async function createPersonWithSchoolContact(
-  ctx: MutationCtx,
-  input: {
-    name: string;
-    email?: string;
-    schoolName?: string;
-    schoolAddress?: string;
-  },
-) {
-  const personId = await ctx.db.insert("people", {
-    name: required(input.name, "Name"),
-    ...(input.email?.trim() ? { email: input.email.trim() } : {}),
-    roles: ["donor"],
-  });
-  if (input.schoolName && input.schoolAddress) {
-    const schools = await ctx.db.query("schools").collect();
-    const existingSchool = matchSchool({
-      name: input.schoolName,
-      address: input.schoolAddress,
-      schools: schools.map((school) => ({
-        id: school._id,
-        normalizedName: school.normalizedName,
-        normalizedAddress: school.normalizedAddress,
-      })),
-    });
-    const schoolId =
-      existingSchool.matchStatus === "attached"
-        ? (existingSchool.schoolId as Id<"schools">)
-        : await ctx.db.insert("schools", {
-            name: input.schoolName.trim(),
-            address: input.schoolAddress.trim(),
-            normalizedName: normalizeSchool(input.schoolName),
-            normalizedAddress: normalizeSchool(input.schoolAddress),
-          });
-    await ctx.db.insert("schoolContacts", { schoolId, personId });
-  }
-  return personId;
 }
 
 export async function recordIntakeRows(
@@ -318,7 +281,16 @@ export async function resolveIntakeItem(
       break;
     case "attach": {
       await requireAttachTarget(ctx, action.record);
-      if (candidate.kind === "review" && action.record.kind === "title") {
+      if (candidate.kind === "donationApplication" &&
+        (action.record.kind === "person" || action.record.kind === "school")) {
+        const { personId } = await resolveDonor(ctx, {
+          ...candidate,
+          ...(action.record.kind === "person"
+            ? { personId: action.record.id as Id<"people"> }
+            : { schoolId: action.record.id as Id<"schools"> }),
+        });
+        resolution = { kind: "attached", record: { kind: "person", id: personId } };
+      } else if (candidate.kind === "review" && action.record.kind === "title") {
         const reviewId = await insertReviewFromCandidate(
           ctx,
           candidate,
@@ -332,9 +304,11 @@ export async function resolveIntakeItem(
       break;
     }
     case "createPerson": {
-      const personId = await createPersonWithSchoolContact(ctx, action);
+      if (candidate.kind !== "donationApplication")
+        throw new Error("Create a person from a donation application");
+      const { personId, created } = await resolveDonor(ctx, action);
       resolution = {
-        kind: "createdRecord",
+        kind: created ? "createdRecord" : "attached",
         record: { kind: "person", id: personId },
       };
       break;
@@ -427,14 +401,14 @@ export async function processIntakeItem(
     return operation === "acceptReview" ? "accepted" : "attached";
   }
   if (candidate.kind !== "donationApplication") return "skipped";
-  const personId = await createPersonWithSchoolContact(ctx, candidate);
+  const { personId, created } = await resolveDonor(ctx, candidate);
   await ctx.db.patch(item._id, {
     state: resolvedState(candidate, {
-      kind: "createdRecord",
+      kind: created ? "createdRecord" : "attached",
       record: { kind: "person", id: personId },
     }),
   });
-  return "created";
+  return created ? "created" : "attached";
 }
 
 async function processBatch(

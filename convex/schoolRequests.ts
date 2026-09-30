@@ -11,7 +11,7 @@ import { requireStaff } from "./lib/auth";
 import { findTitleByIsbn } from "./lib/catalog";
 import { positiveInteger, required } from "./lib/validation";
 import { availableQuantity, isShortage } from "../lib/domain/inventory";
-import { matchSchool } from "../lib/domain/requests";
+import { resolveSchool } from "./lib/resolution";
 import type { RequestStatus } from "../lib/domain/types";
 import { loadOrgSettings } from "./orgSettings";
 import { assertPublicRequestsOpen } from "../lib/domain/orgSettings";
@@ -142,29 +142,16 @@ export const internalSubmit = internalMutation({
       }),
     );
 
-    const schools = await ctx.db.query("schools").collect();
-    const schoolMatch = matchSchool({
+    const schoolMatch = await resolveSchool(ctx, {
       name: cleanSchoolName,
       address: cleanAddress,
-      schools: schools.map((school) => ({
-        id: school._id,
-        normalizedName: school.normalizedName,
-        normalizedAddress: school.normalizedAddress,
-      })),
-    });
-    const attachedSchool =
-      schoolMatch.matchStatus === "attached"
-        ? schools.find((school) => school._id === schoolMatch.schoolId)
-        : undefined;
-    if (schoolMatch.matchStatus === "attached" && !attachedSchool) {
-      throw new Error("Matched school not found");
-    }
+    }, "match");
 
     const reference = createReference();
     const requestId = await ctx.db.insert("schoolRequests", {
-      ...(attachedSchool === undefined
-        ? {}
-        : { schoolId: attachedSchool._id }),
+      ...(schoolMatch.matchStatus === "attached"
+        ? { schoolId: schoolMatch.schoolId as Doc<"schools">["_id"] }
+        : {}),
       schoolName: cleanSchoolName,
       schoolAddress: cleanAddress,
       contactName: cleanContactName,

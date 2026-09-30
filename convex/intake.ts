@@ -13,6 +13,7 @@ import { requireStaff } from "./lib/auth";
 import { required } from "./lib/validation";
 import { normalizeIsbn } from "../lib/domain/catalog";
 import { matchSchool } from "../lib/domain/requests";
+import { normalizeEmail } from "./lib/resolution";
 import {
   acceptPendingReviewItems,
   createPendingDonationItems,
@@ -305,6 +306,13 @@ export const listItems = query({
         rawPayloadPresent: item.rawValues !== undefined || item.sourcePayload !== undefined,
         state: item.state,
         suggestions: suggestionsFor(item.state, people, schools, titles),
+        attachmentOptions: item.state.kind !== "pending" ? [] :
+          item.state.candidate.kind === "donationApplication"
+            ? [
+                ...people.map((person) => ({ kind: "person" as const, id: person._id, label: `Person · ${person.name}` })),
+                ...schools.map((school) => ({ kind: "school" as const, id: school._id, label: `School · ${school.name} (${school.address})` })),
+              ]
+            : titles.map((title) => ({ kind: "title" as const, id: title._id, label: `Title · ${title.title} (${title.isbn})` })),
       }));
   },
 });
@@ -335,7 +343,7 @@ function suggestionsFor(
   if (candidate.email) {
     for (const person of people) {
       if (
-        person.email?.toLocaleLowerCase() === candidate.email.toLocaleLowerCase()
+        person.email && normalizeEmail(person.email) === normalizeEmail(candidate.email)
       ) {
         refs.push({ kind: "person", id: person._id });
       }
@@ -370,6 +378,8 @@ export const resolveItem = mutation({
         email: v.optional(v.string()),
         schoolName: v.optional(v.string()),
         schoolAddress: v.optional(v.string()),
+        personId: v.optional(v.id("people")),
+        schoolId: v.optional(v.id("schools")),
       }),
       v.object({
         kind: v.literal("createTitle"),

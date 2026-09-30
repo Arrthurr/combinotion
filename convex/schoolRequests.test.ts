@@ -267,6 +267,15 @@ describe("school requests", () => {
     );
     expect(exceptions).toHaveLength(1);
     expect(exceptions[0].matchStatus).toBe("ambiguous");
+    await t.mutation(internal.schoolRequests.internalSubmit,
+      requestArgs({ schoolName: "Unknown School", address: "8 Oak Street" }),
+    );
+    const again = await asStaff.query(api.schoolRequests.listExceptions, {});
+    expect(again.map((request) => request.matchStatus)).toEqual(["ambiguous", "unmatched"]);
+    expect(await asStaff.query(api.schools.listSchools, {})).toHaveLength(1);
+    expect(await asStaff.query(api.people.listPeople, {})).toHaveLength(0);
+    const contacts = await t.run((ctx) => ctx.db.query("schoolContacts").collect());
+    expect(contacts).toHaveLength(0);
   });
 
   it("lists an attached request when its reservation is in shortage", async () => {

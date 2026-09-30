@@ -3,6 +3,7 @@ import { mutation, query } from "./_generated/server";
 import { requireStaff } from "./lib/auth";
 import { required } from "./lib/validation";
 import { normalizeSchool } from "../lib/domain/requests";
+import { ensureSchoolContact } from "./lib/resolution";
 
 export const createSchool = mutation({
   args: { name: v.string(), address: v.string() },
@@ -48,27 +49,7 @@ export const addContact = mutation({
   },
   handler: async (ctx, { schoolId, personId }) => {
     await requireStaff(ctx);
-    const [school, person, contacts] = await Promise.all([
-      ctx.db.get(schoolId),
-      ctx.db.get(personId),
-      ctx.db
-        .query("schoolContacts")
-        .withIndex("by_school", (q) => q.eq("schoolId", schoolId))
-        .collect(),
-    ]);
-    if (!school) {
-      throw new Error("School not found");
-    }
-    if (!person) {
-      throw new Error("Person not found");
-    }
-    const existing = contacts.find(
-      (contact) => contact.personId === personId,
-    );
-    if (existing) {
-      return existing._id;
-    }
-    return await ctx.db.insert("schoolContacts", { schoolId, personId });
+    return await ensureSchoolContact(ctx, schoolId, personId);
   },
 });
 

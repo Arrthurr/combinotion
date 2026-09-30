@@ -173,6 +173,29 @@ describe("Notion import", () => {
     expect(titles[0]?._id).toBe(existingId);
   });
 
+  it("preserves historical person and school identities and replays by source id", async () => {
+    const { asStaff } = await createStaffTest();
+    const personId = await asStaff.mutation(api.people.createPerson, {
+      name: "Live Ada", email: "ada@example.com", roles: ["donor"],
+    });
+    const schoolId = await asStaff.mutation(api.schools.createSchool, {
+      name: "Joy School", address: "1 Main Street",
+    });
+    const historical: ImportRow[] = [
+      { kind: "person", notionId: "historical-ada", name: "Historical Ada", email: "ADA@example.com", roles: ["reader"] },
+      { kind: "school", notionId: "historical-joy", name: "Joy School", address: "1 Main Street" },
+    ];
+    const args = { rows: historical, expectedDigest: dryRunImport(historical).digest };
+    await asStaff.mutation(api.migrations.notionImport.apply, args);
+    await asStaff.mutation(api.migrations.notionImport.apply, args);
+    const people = await asStaff.query(api.people.listPeople, {});
+    const schools = await asStaff.query(api.schools.listSchools, {});
+    expect(people).toHaveLength(2);
+    expect(people.find((person) => person._id !== personId)).toMatchObject({ name: "Historical Ada", roles: ["reader"] });
+    expect(schools).toHaveLength(2);
+    expect(schools.find((school) => school._id !== schoolId)).toMatchObject({ name: "Joy School" });
+  });
+
   it("does not add an opening balance after a live stock movement", async () => {
     const { t, asStaff } = await createStaffTest();
     const historyRows = rows.filter((row) => row.kind !== "openingBalance");

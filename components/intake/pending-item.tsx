@@ -4,6 +4,7 @@ import { useMutation } from "convex/react";
 import { useState, type FormEvent } from "react";
 import { api } from "@/convex/_generated/api";
 import type { FunctionReturnType } from "convex/server";
+import type { Id } from "@/convex/_generated/dataModel";
 
 type IntakeListItem = FunctionReturnType<typeof api.intake.listItems>[number];
 
@@ -20,23 +21,15 @@ function candidateLabel(item: IntakeListItem) {
 
 export function PendingItem({
   item,
-  people,
-  schools,
-  titles,
   onStatus,
 }: {
   item: IntakeListItem;
-  people: { _id: string; name: string }[];
-  schools: { _id: string; name: string }[];
-  titles: { _id: string; title: string; isbn: string }[];
   onStatus: (message: string) => void;
 }) {
   const resolveItem = useMutation(api.intake.resolveItem);
   const [busy, setBusy] = useState(false);
 
-  async function resolve(
-    action: Parameters<typeof resolveItem>[0]["action"],
-  ) {
+  async function resolve(action: Parameters<typeof resolveItem>[0]["action"]) {
     if (busy) {
       return;
     }
@@ -63,7 +56,9 @@ export function PendingItem({
       <li className="card stack">
         <strong>Invalid row</strong>
         <p>{item.state.errors.join("; ")}</p>
-        <p className="muted">Fix the sheet row. The next poll will reparse it.</p>
+        <p className="muted">
+          Fix the sheet row. The next poll will reparse it.
+        </p>
       </li>
     );
   }
@@ -112,6 +107,10 @@ export function PendingItem({
       email: String(data.get("email") ?? "") || undefined,
       schoolName: String(data.get("schoolName") ?? "") || undefined,
       schoolAddress: String(data.get("schoolAddress") ?? "") || undefined,
+      personId: (String(data.get("personId") ?? "") || undefined) as
+        Id<"people"> | undefined,
+      schoolId: (String(data.get("schoolId") ?? "") || undefined) as
+        Id<"schools"> | undefined,
     });
   }
 
@@ -135,23 +134,6 @@ export function PendingItem({
     });
   }
 
-  const attachOptions = new Map<string, string>();
-  for (const ref of item.suggestions) {
-    attachOptions.set(`${ref.kind}:${ref.id}`, `Suggested ${ref.kind}`);
-  }
-  for (const person of people) {
-    attachOptions.set(`person:${person._id}`, `Person · ${person.name}`);
-  }
-  for (const school of schools) {
-    attachOptions.set(`school:${school._id}`, `School · ${school.name}`);
-  }
-  for (const title of titles) {
-    attachOptions.set(
-      `title:${title._id}`,
-      `Title · ${title.title} (${title.isbn})`,
-    );
-  }
-
   return (
     <li className="card stack">
       <strong>{candidateLabel(item)}</strong>
@@ -167,8 +149,8 @@ export function PendingItem({
             <option value="" disabled>
               Choose a record
             </option>
-            {[...attachOptions].map(([value, label]) => (
-              <option key={value} value={value}>
+            {item.attachmentOptions.map(({ kind, id, label }) => (
+              <option key={`${kind}:${id}`} value={`${kind}:${id}`}>
                 {label}
               </option>
             ))}
@@ -180,6 +162,32 @@ export function PendingItem({
       </form>
       {candidate.kind === "donationApplication" ? (
         <form className="stack" onSubmit={createPerson}>
+          <label>
+            Existing person (optional)
+            <select name="personId" disabled={busy} defaultValue="">
+              <option value="">Match email or create a person</option>
+              {item.attachmentOptions
+                .filter((option) => option.kind === "person")
+                .map((option) => (
+                  <option key={option.id} value={option.id}>
+                    {option.label}
+                  </option>
+                ))}
+            </select>
+          </label>
+          <label>
+            Existing school (optional)
+            <select name="schoolId" disabled={busy} defaultValue="">
+              <option value="">Match school name and address</option>
+              {item.attachmentOptions
+                .filter((option) => option.kind === "school")
+                .map((option) => (
+                  <option key={option.id} value={option.id}>
+                    {option.label}
+                  </option>
+                ))}
+            </select>
+          </label>
           <label>
             Name
             <input
@@ -215,7 +223,7 @@ export function PendingItem({
             />
           </label>
           <button className="button" disabled={busy} type="submit">
-            Create person from this row
+            Resolve donor from this row
           </button>
         </form>
       ) : (
