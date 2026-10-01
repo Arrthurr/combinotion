@@ -1,9 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { POST } from "@/app/api/school-requests/route";
-import {
-  consumeSchoolRequestAttempt,
-  resetSchoolRequestRateLimit,
-} from "@/lib/schoolRequestRateLimit";
 
 function request(body: object, client = "203.0.113.10") {
   return new Request("http://localhost/api/school-requests", {
@@ -24,7 +20,6 @@ const contact = {
 };
 
 afterEach(() => {
-  resetSchoolRequestRateLimit();
   vi.unstubAllEnvs();
   vi.unstubAllGlobals();
 });
@@ -75,19 +70,13 @@ describe("school request route", () => {
   });
 
   it("forwards a Convex 503 closed-request message", async () => {
-    vi.stubEnv(
-      "NEXT_PUBLIC_CONVEX_SITE_URL",
-      "https://example.convex.site",
-    );
+    vi.stubEnv("NEXT_PUBLIC_CONVEX_SITE_URL", "https://example.convex.site");
     vi.stubEnv("SCHOOL_REQUEST_SHARED_SECRET", "server-secret");
     const fetchMock = vi.fn().mockResolvedValue(
-      new Response(
-        JSON.stringify({ error: "Hold until the count is done" }),
-        {
-          status: 503,
-          headers: { "content-type": "application/json" },
-        },
-      ),
+      new Response(JSON.stringify({ error: "Hold until the count is done" }), {
+        status: 503,
+        headers: { "content-type": "application/json" },
+      }),
     );
     vi.stubGlobal("fetch", fetchMock);
 
@@ -105,10 +94,7 @@ describe("school request route", () => {
   });
 
   it("adds the shared secret only when forwarding to Convex", async () => {
-    vi.stubEnv(
-      "NEXT_PUBLIC_CONVEX_SITE_URL",
-      "https://example.convex.site",
-    );
+    vi.stubEnv("NEXT_PUBLIC_CONVEX_SITE_URL", "https://example.convex.site");
     vi.stubEnv("SCHOOL_REQUEST_SHARED_SECRET", "server-secret");
     const fetchMock = vi.fn().mockResolvedValue(
       new Response(JSON.stringify({ reference: "JFB-TEST1234" }), {
@@ -140,11 +126,8 @@ describe("school request route", () => {
     );
   });
 
-  it("rejects repeated submissions from one client without blocking another", async () => {
-    vi.stubEnv(
-      "NEXT_PUBLIC_CONVEX_SITE_URL",
-      "https://example.convex.site",
-    );
+  it("leaves rate limiting to the durable submission service", async () => {
+    vi.stubEnv("NEXT_PUBLIC_CONVEX_SITE_URL", "https://example.convex.site");
     vi.stubEnv("SCHOOL_REQUEST_SHARED_SECRET", "server-secret");
     const fetchMock = vi.fn().mockImplementation(() =>
       Promise.resolve(
@@ -165,24 +148,17 @@ describe("school request route", () => {
       expect(allowed.status).toBe(201);
     }
 
-    const limited = await POST(request(body, "203.0.113.10"));
-    expect(limited.status).toBe(429);
-    expect(limited.headers.get("Retry-After")).toMatch(/^[1-9]\d*$/);
-    expect(await limited.json()).toEqual({
-      error: "Please wait a few minutes before submitting another request.",
-    });
-    expect(fetchMock).toHaveBeenCalledTimes(5);
+    const sixth = await POST(request(body, "203.0.113.10"));
+    expect(sixth.status).toBe(201);
+    expect(fetchMock).toHaveBeenCalledTimes(6);
 
     const otherClient = await POST(request(body, "203.0.113.20"));
     expect(otherClient.status).toBe(201);
-    expect(fetchMock).toHaveBeenCalledTimes(6);
+    expect(fetchMock).toHaveBeenCalledTimes(7);
   });
 
   it("forwards a Convex 429 when a different IP shares an email", async () => {
-    vi.stubEnv(
-      "NEXT_PUBLIC_CONVEX_SITE_URL",
-      "https://example.convex.site",
-    );
+    vi.stubEnv("NEXT_PUBLIC_CONVEX_SITE_URL", "https://example.convex.site");
     vi.stubEnv("SCHOOL_REQUEST_SHARED_SECRET", "server-secret");
     const fetchMock = vi.fn().mockResolvedValue(
       new Response(
@@ -217,19 +193,28 @@ describe("school request route", () => {
     });
   });
 
-  it("allows another attempt after the rate-limit window", () => {
-    const client = "school-a";
-    const startedAt = 1_000_000;
-    for (let attempt = 0; attempt < 5; attempt += 1) {
-      expect(
-        consumeSchoolRequestAttempt(client, startedAt + attempt).allowed,
-      ).toBe(true);
-    }
-    expect(consumeSchoolRequestAttempt(client, startedAt + 4).allowed).toBe(
-      false,
-    );
-    expect(
-      consumeSchoolRequestAttempt(client, startedAt + 10 * 60 * 1000).allowed,
-    ).toBe(true);
-  });
+  it.each([
+    { status: 201, body: JSON.stringify({ error: "Unexpected" }) },
+    { status: 409, body: JSON.stringify({ reference: "JFB-WRONG" }) },
+    { status: 500, body: JSON.stringify({ error: "Private backend failure" }) },
+    { status: 201, body: JSON.stringify({ reference: 123 }) },
+    { status: 201, body: "not JSON" },
+  ])(
+    "fails safely for an invalid upstream response ($status, $body)",
+    async ({ status, body }) => {
+      vi.stubEnv("NEXT_PUBLIC_CONVEX_SITE_URL", "https://example.convex.site");
+      vi.stubEnv("SCHOOL_REQUEST_SHARED_SECRET", "server-secret");
+      vi.stubGlobal(
+        "fetch",
+        vi.fn().mockResolvedValue(new Response(body, { status })),
+      );
+      const response = await POST(
+        request({ ...contact, lines: [{ isbn: "1", quantity: 2 }] }),
+      );
+      expect(response.status).toBe(503);
+      expect(await response.json()).toEqual({
+        error: "Request service unavailable",
+      });
+    },
+  );
 });

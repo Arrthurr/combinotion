@@ -1,51 +1,10 @@
 import { httpRouter } from "convex/server";
-import { z } from "zod";
 import { httpAction } from "./_generated/server";
-import { api, internal } from "./_generated/api";
+import { internal } from "./_generated/api";
 import {
-  publicRequestsHoldMessage,
-  type PublicRequests,
-} from "../lib/domain/orgSettings";
-import {
-  SCHOOL_REQUEST_RATE_LIMIT_MESSAGE,
-  schoolRequestRateLimitKeyFromEmail,
-} from "../lib/schoolRequestRateLimit";
-
-const requestSchema = z.object({
-  schoolName: z.string().min(2),
-  address: z.string().min(5),
-  contactName: z.string().min(2),
-  email: z.string().email(),
-  lines: z
-    .array(
-      z.object({
-        isbn: z.string().min(1),
-        quantity: z.number().int().positive(),
-      }),
-    )
-    .min(1),
-  idempotencyKey: z.string().min(1).optional(),
-});
-
-function json(
-  body: object,
-  status: number,
-  extraHeaders?: Record<string, string>,
-) {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { "content-type": "application/json", ...extraHeaders },
-  });
-}
-
-function errorMessage(error: unknown) {
-  return error instanceof Error ? error.message : "Invalid request";
-}
-
-function closedResponse(publicRequests: PublicRequests) {
-  const hold = publicRequestsHoldMessage(publicRequests);
-  return hold === undefined ? null : json({ error: hold }, 503);
-}
+  normalizeSchoolRequest,
+  schoolRequestResponse,
+} from "../lib/schoolRequestSubmission";
 
 const http = httpRouter();
 
@@ -58,51 +17,26 @@ http.route({
       !sharedSecret ||
       request.headers.get("x-school-request-secret") !== sharedSecret
     ) {
-      return json({ error: "Request service unavailable" }, 403);
+      return schoolRequestResponse({ kind: "forbidden" });
     }
-
+    let body: unknown;
     try {
-      const gate = await ctx.runQuery(api.orgSettings.publicRequestGate, {});
-      const closed = closedResponse(gate.publicRequests);
-      if (closed) {
-        return closed;
-      }
-      const body = requestSchema.parse(await request.json());
-      const rate = await ctx.runMutation(
-        internal.schoolRequests.internalConsumeRateLimit,
-        {
-          clientKey: schoolRequestRateLimitKeyFromEmail(body.email),
-        },
-      );
-      if (!rate.allowed) {
-        return json(
-          { error: SCHOOL_REQUEST_RATE_LIMIT_MESSAGE },
-          429,
-          { "Retry-After": String(rate.retryAfterSeconds) },
-        );
-      }
-      const result = await ctx.runMutation(
+      body = await request.json();
+    } catch {
+      return schoolRequestResponse({ kind: "invalid" });
+    }
+    const parsed = normalizeSchoolRequest(body);
+    if (!parsed.success) {
+      return schoolRequestResponse({ kind: "invalid" });
+    }
+    try {
+      const outcome = await ctx.runMutation(
         internal.schoolRequests.internalSubmit,
-        body,
+        parsed.data,
       );
-      return json(result, 201);
-    } catch (error) {
-      const gate = await ctx.runQuery(api.orgSettings.publicRequestGate, {});
-      const closed = closedResponse(gate.publicRequests);
-      if (closed) {
-        return closed;
-      }
-      const message = errorMessage(error);
-      if (message.includes("Those copies are no longer available")) {
-        return json(
-          { error: "Those copies are no longer available" },
-          409,
-        );
-      }
-      if (message.includes("Title is not available")) {
-        return json({ error: "Title is not available" }, 409);
-      }
-      return json({ error: message }, 400);
+      return schoolRequestResponse(outcome);
+    } catch {
+      return schoolRequestResponse({ kind: "unavailable" });
     }
   }),
 });

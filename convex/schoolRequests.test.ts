@@ -84,7 +84,10 @@ describe("school requests", () => {
     expect(await t.query(api.titles.listRequestable, {})).toEqual([]);
     await expect(
       t.mutation(internal.schoolRequests.internalSubmit, requestArgs()),
-    ).rejects.toThrow("Public book requests are closed");
+    ).resolves.toEqual({
+      kind: "closed",
+      message: "Public book requests are closed",
+    });
   });
 
   it("matches a hyphenated request ISBN to a digit-only catalog ISBN", async () => {
@@ -94,7 +97,10 @@ describe("school requests", () => {
       internal.schoolRequests.internalSubmit,
       requestArgs({ isbn: "978-0823456386", quantity: 1 }),
     );
-    expect(result.reference).toMatch(/^JFB-/);
+    expect(result).toEqual({
+      kind: "submitted",
+      reference: expect.stringMatching(/^JFB-/),
+    });
     const titles = await t.run(async (ctx) => ctx.db.query("titles").collect());
     expect(titles[0]?.activeReservedQuantity).toBe(1);
   });
@@ -106,7 +112,10 @@ describe("school requests", () => {
       internal.schoolRequests.internalSubmit,
       requestArgs({ isbn: "9780823456386", quantity: 1 }),
     );
-    expect(result.reference).toMatch(/^JFB-/);
+    expect(result).toEqual({
+      kind: "submitted",
+      reference: expect.stringMatching(/^JFB-/),
+    });
     const titles = await t.run(async (ctx) => ctx.db.query("titles").collect());
     expect(titles[0]?.activeReservedQuantity).toBe(1);
   });
@@ -125,7 +134,7 @@ describe("school requests", () => {
           { isbn: "9780823456386", quantity: 1 },
         ],
       }),
-    ).rejects.toThrow("A title can appear only once in a request");
+    ).resolves.toEqual({ kind: "duplicateTitle" });
   });
 
   it("reserves copies and restores availability when declined", async () => {
@@ -135,7 +144,10 @@ describe("school requests", () => {
       internal.schoolRequests.internalSubmit,
       requestArgs({ quantity: 6 }),
     );
-    expect(result.reference).toMatch(/^JFB-[A-Z0-9]{8}$/);
+    expect(result).toEqual({
+      kind: "submitted",
+      reference: expect.stringMatching(/^JFB-[A-Z0-9]{8}$/),
+    });
 
     let title = await t.run(async (ctx) => ctx.db.get(titleId));
     expect(title).toEqual(
@@ -153,10 +165,7 @@ describe("school requests", () => {
       },
     ]);
 
-    const active = await asStaff.query(
-      api.schoolRequests.listActive,
-      {},
-    );
+    const active = await asStaff.query(api.schoolRequests.listActive, {});
     await asStaff.mutation(api.schoolRequests.resolveRequest, {
       requestId: active[0]._id,
       resolution: "declined",
@@ -203,7 +212,7 @@ describe("school requests", () => {
           address: "3 Main Street",
         }),
       ),
-    ).rejects.toThrow("no longer available");
+    ).resolves.toEqual({ kind: "copiesUnavailable" });
 
     const title = await t.run(async (ctx) => ctx.db.get(titleId));
     expect(title).toEqual(
@@ -233,10 +242,7 @@ describe("school requests", () => {
       }),
     );
 
-    const active = await asStaff.query(
-      api.schoolRequests.listActive,
-      {},
-    );
+    const active = await asStaff.query(api.schoolRequests.listActive, {});
     expect(active[0]).toEqual(
       expect.objectContaining({
         schoolId,
@@ -267,14 +273,20 @@ describe("school requests", () => {
     );
     expect(exceptions).toHaveLength(1);
     expect(exceptions[0].matchStatus).toBe("ambiguous");
-    await t.mutation(internal.schoolRequests.internalSubmit,
+    await t.mutation(
+      internal.schoolRequests.internalSubmit,
       requestArgs({ schoolName: "Unknown School", address: "8 Oak Street" }),
     );
     const again = await asStaff.query(api.schoolRequests.listExceptions, {});
-    expect(again.map((request) => request.matchStatus)).toEqual(["ambiguous", "unmatched"]);
+    expect(again.map((request) => request.matchStatus)).toEqual([
+      "ambiguous",
+      "unmatched",
+    ]);
     expect(await asStaff.query(api.schools.listSchools, {})).toHaveLength(1);
     expect(await asStaff.query(api.people.listPeople, {})).toHaveLength(0);
-    const contacts = await t.run((ctx) => ctx.db.query("schoolContacts").collect());
+    const contacts = await t.run((ctx) =>
+      ctx.db.query("schoolContacts").collect(),
+    );
     expect(contacts).toHaveLength(0);
   });
 
@@ -318,10 +330,7 @@ describe("school requests", () => {
       internal.schoolRequests.internalSubmit,
       requestArgs({ quantity: 3 }),
     );
-    const active = await asStaff.query(
-      api.schoolRequests.listActive,
-      {},
-    );
+    const active = await asStaff.query(api.schoolRequests.listActive, {});
     await asStaff.mutation(api.schoolRequests.resolveRequest, {
       requestId: active[0]._id,
       resolution: "cancelled",
@@ -376,16 +385,13 @@ describe("school requests", () => {
       });
     });
     await insertTitle(t);
-    await t.mutation(
-      internal.schoolRequests.internalSubmit,
-      requestArgs(),
-    );
+    await t.mutation(internal.schoolRequests.internalSubmit, requestArgs());
     const requests = await t.run(async (ctx) =>
       ctx.db.query("schoolRequests").collect(),
     );
-    await expect(
-      t.query(api.schoolRequests.listActive, {}),
-    ).rejects.toThrow("Authentication required");
+    await expect(t.query(api.schoolRequests.listActive, {})).rejects.toThrow(
+      "Authentication required",
+    );
     await expect(
       t.mutation(api.schoolRequests.resolveRequest, {
         requestId: requests[0]._id,
@@ -491,10 +497,7 @@ describe("school requests", () => {
   it("keeps the anonymous title projection minimal", async () => {
     const { t } = await createStaffTest();
     await insertTitle(t, { notes: "Private note" });
-    const requestable = await t.query(
-      api.titles.listRequestable,
-      {},
-    );
+    const requestable = await t.query(api.titles.listRequestable, {});
     expect(requestable).toEqual([
       {
         title: "Book 1",
