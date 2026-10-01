@@ -1,11 +1,7 @@
 import { v } from "convex/values";
 import type { Id } from "./_generated/dataModel";
-import {
-  mutation,
-  query,
-  type MutationCtx,
-} from "./_generated/server";
-import { requireStaff } from "./lib/auth";
+import type { MutationCtx } from "./_generated/server";
+import { staffMutation, staffQuery } from "./lib/auth";
 import { loadOrgSettings } from "./orgSettings";
 import { orgThreshold } from "../lib/domain/orgSettings";
 import { positiveInteger, required } from "./lib/validation";
@@ -336,10 +332,9 @@ export async function restoreReservation(
   return reservation._id;
 }
 
-export const listReview = query({
+export const listReview = staffQuery({
   args: {},
   handler: async (ctx) => {
-    await requireStaff(ctx);
     const threshold = orgThreshold(await loadOrgSettings(ctx));
     const titles = await ctx.db.query("titles").collect();
     return titles
@@ -357,10 +352,9 @@ export const listReview = query({
   },
 });
 
-export const listHistory = query({
+export const listHistory = staffQuery({
   args: { titleId: v.id("titles") },
   handler: async (ctx, { titleId }) => {
-    await requireStaff(ctx);
     return await ctx.db
       .query("inventoryMovements")
       .withIndex("by_title", (q) => q.eq("titleId", titleId))
@@ -369,14 +363,13 @@ export const listHistory = query({
   },
 });
 
-export const correctOnHand = mutation({
+export const correctOnHand = staffMutation({
   args: {
     titleId: v.id("titles"),
     quantityOnHand: v.number(),
     reason: v.string(),
   },
   handler: async (ctx, { titleId, quantityOnHand, reason }) => {
-    await requireStaff(ctx);
     const cleanReason = required(reason, "Reason");
     if (!Number.isInteger(quantityOnHand) || quantityOnHand < 0) {
       throw new Error("On-hand quantity must be a non-negative whole number");
@@ -439,22 +432,20 @@ export async function writeOpeningBalance(
   });
 }
 
-export const recordOpeningBalance = mutation({
+export const recordOpeningBalance = staffMutation({
   args: {
     titleId: v.id("titles"),
     quantity: v.number(),
     reason: v.string(),
   },
   handler: async (ctx, { titleId, quantity, reason }) => {
-    await requireStaff(ctx);
     return await writeOpeningBalance(ctx, { titleId, quantity, reason });
   },
 });
 
-export const markReorderNeeded = mutation({
+export const markReorderNeeded = staffMutation({
   args: { titleId: v.id("titles"), needed: v.boolean() },
   handler: async (ctx, { titleId, needed }) => {
-    await requireStaff(ctx);
     const title = await ctx.db.get(titleId);
     if (!title) {
       throw new Error("Title not found");

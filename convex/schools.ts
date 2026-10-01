@@ -1,14 +1,12 @@
 import { v } from "convex/values";
-import { mutation, query } from "./_generated/server";
-import { requireStaff } from "./lib/auth";
+import { staffMutation, staffQuery } from "./lib/auth";
 import { required } from "./lib/validation";
 import { normalizeSchool } from "../lib/domain/requests";
 import { ensureSchoolContact } from "./lib/resolution";
 
-export const createSchool = mutation({
+export const createSchool = staffMutation({
   args: { name: v.string(), address: v.string() },
   handler: async (ctx, { name, address }) => {
-    await requireStaff(ctx);
     const cleanName = required(name, "School name");
     const cleanAddress = required(address, "School address");
     const normalizedName = normalizeSchool(cleanName);
@@ -33,30 +31,27 @@ export const createSchool = mutation({
   },
 });
 
-export const listSchools = query({
+export const listSchools = staffQuery({
   args: {},
   handler: async (ctx) => {
-    await requireStaff(ctx);
     const schools = await ctx.db.query("schools").collect();
     return schools.sort((left, right) => left.name.localeCompare(right.name));
   },
 });
 
-export const addContact = mutation({
+export const addContact = staffMutation({
   args: {
     schoolId: v.id("schools"),
     personId: v.id("people"),
   },
   handler: async (ctx, { schoolId, personId }) => {
-    await requireStaff(ctx);
     return await ensureSchoolContact(ctx, schoolId, personId);
   },
 });
 
-export const listContacts = query({
+export const listContacts = staffQuery({
   args: { schoolId: v.id("schools") },
   handler: async (ctx, { schoolId }) => {
-    await requireStaff(ctx);
     const school = await ctx.db.get(schoolId);
     if (!school) {
       throw new Error("School not found");

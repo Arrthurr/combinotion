@@ -1,7 +1,6 @@
 import { v } from "convex/values";
 import type { Id } from "./_generated/dataModel";
-import { mutation, query } from "./_generated/server";
-import { requireStaff } from "./lib/auth";
+import { staffMutation, staffQuery } from "./lib/auth";
 import { outstandingQuantity } from "../lib/domain/orders";
 import {
   buildTimeline,
@@ -44,10 +43,10 @@ function sameResolution<VisitId>(
   }
 }
 
-export const getTableColumns = query({
+export const getTableColumns = staffQuery({
   args: {},
   handler: async (ctx) => {
-    const identity = await requireStaff(ctx);
+    const { identity } = ctx;
     const config = await ctx.db
       .query("viewConfigs")
       .withIndex("by_clerkId", (q) =>
@@ -60,12 +59,12 @@ export const getTableColumns = query({
   },
 });
 
-export const setTableColumns = mutation({
+export const setTableColumns = staffMutation({
   args: {
     columns: v.array(tableColumnValidator),
   },
   handler: async (ctx, { columns }) => {
-    const identity = await requireStaff(ctx);
+    const { identity } = ctx;
     const tableColumns = sanitizeTableColumns(columns);
     const existing = await ctx.db
       .query("viewConfigs")
@@ -84,7 +83,7 @@ export const setTableColumns = mutation({
   },
 });
 
-export const listVisitBoard = query({
+export const listVisitBoard = staffQuery({
   args: {},
   handler: async (
     ctx,
@@ -95,7 +94,6 @@ export const listVisitBoard = query({
       Id<"visits">
     >
   > => {
-    await requireStaff(ctx);
     const plans = await ctx.db.query("visitPlans").collect();
     const columns = emptyVisitPlanColumns<
       Id<"visitPlans">,
@@ -179,7 +177,7 @@ export const listVisitBoard = query({
   },
 });
 
-export const saveVisitPlan = mutation({
+export const saveVisitPlan = staffMutation({
   args: {
     planId: v.optional(v.id("visitPlans")),
     schoolId: v.id("schools"),
@@ -191,7 +189,6 @@ export const saveVisitPlan = mutation({
     ctx,
     { planId, schoolId, stage, plannedFor, notes },
   ) => {
-    await requireStaff(ctx);
     if (!(await ctx.db.get(schoolId))) {
       throw new Error("School not found");
     }
@@ -220,13 +217,12 @@ export const saveVisitPlan = mutation({
   },
 });
 
-export const setVisitPlanStage = mutation({
+export const setVisitPlanStage = staffMutation({
   args: {
     planId: v.id("visitPlans"),
     stage: visitPlanStageValidator,
   },
   handler: async (ctx, { planId, stage }) => {
-    await requireStaff(ctx);
     const plan = await ctx.db.get(planId);
     if (!plan) {
       throw new Error("Visit plan not found");
@@ -241,13 +237,12 @@ export const setVisitPlanStage = mutation({
   },
 });
 
-export const resolveVisitPlan = mutation({
+export const resolveVisitPlan = staffMutation({
   args: {
     planId: v.id("visitPlans"),
     resolution: visitPlanResolutionValidator(v.id("visits")),
   },
   handler: async (ctx, { planId, resolution }) => {
-    await requireStaff(ctx);
     const plan = await ctx.db.get(planId);
     if (!plan) {
       throw new Error("Visit plan not found");
@@ -285,7 +280,7 @@ export const resolveVisitPlan = mutation({
   },
 });
 
-export const listTimeline = query({
+export const listTimeline = staffQuery({
   args: {
     window: v.object({
       from: v.number(),
@@ -293,7 +288,6 @@ export const listTimeline = query({
     }),
   },
   handler: async (ctx, { window }) => {
-    await requireStaff(ctx);
     if (
       !Number.isFinite(window.from) ||
       !Number.isFinite(window.to) ||

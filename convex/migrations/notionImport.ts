@@ -1,7 +1,7 @@
 import { v } from "convex/values";
 import type { Id } from "../_generated/dataModel";
-import { internalMutation, mutation, type MutationCtx } from "../_generated/server";
-import { requireStaff } from "../lib/auth";
+import { internalMutation, type MutationCtx } from "../_generated/server";
+import { staffMutation } from "../lib/auth";
 import { normalizeIsbn } from "../../lib/domain/catalog";
 import { notionSourceId } from "../../lib/domain/intake";
 import {
@@ -288,10 +288,9 @@ async function applyRows(
   return report;
 }
 
-export const dryRun = mutation({
+export const dryRun = staffMutation({
   args: { rows: v.array(v.any()) },
   handler: async (ctx, { rows }) => {
-    await requireStaff(ctx);
     return planImport(parseImportRows(rows), await loadImportCatalog(ctx));
   },
 });
@@ -301,10 +300,9 @@ const applyArgs = {
   expectedDigest: v.string(),
 };
 
-export const apply = mutation({
+export const apply = staffMutation({
   args: applyArgs,
   handler: async (ctx, { rows, expectedDigest }) => {
-    await requireStaff(ctx);
     return await applyRows(ctx, parseImportRows(rows), expectedDigest);
   },
 });

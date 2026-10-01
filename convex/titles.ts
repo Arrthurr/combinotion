@@ -1,13 +1,12 @@
 import { v } from "convex/values";
 import type { Id } from "./_generated/dataModel";
 import {
-  mutation,
   query,
   type MutationCtx,
 } from "./_generated/server";
 import { catalogText, normalizeIsbn, stripNotionMarkdown } from "../lib/domain/catalog";
 import { availableQuantity, reviewState } from "../lib/domain/inventory";
-import { requireStaff } from "./lib/auth";
+import { staffMutation, staffQuery } from "./lib/auth";
 import { findTitleByIsbn } from "./lib/catalog";
 import { required } from "./lib/validation";
 import { isPublicRequestsOpen, orgThreshold } from "../lib/domain/orgSettings";
@@ -158,7 +157,7 @@ export const projectRequestable = (titles: TitleProjection[]) =>
     }))
     .filter((title) => title.availableQuantity > 0);
 
-export const createTitle = mutation({
+export const createTitle = staffMutation({
   args: {
     title: v.string(),
     author: v.string(),
@@ -166,7 +165,6 @@ export const createTitle = mutation({
     ...optionalCatalogValidators,
   },
   handler: async (ctx, args) => {
-    await requireStaff(ctx);
     const { title, author, isbn } = catalogIdentity(args);
     if (!isbn) throw new Error("ISBN is required");
     const synopsis = optionalText(args.synopsis);
@@ -196,7 +194,7 @@ export const createTitle = mutation({
   },
 });
 
-export const updateTitle = mutation({
+export const updateTitle = staffMutation({
   args: {
     titleId: v.id("titles"),
     title: v.string(),
@@ -205,7 +203,6 @@ export const updateTitle = mutation({
     ...optionalCatalogValidators,
   },
   handler: async (ctx, args) => {
-    await requireStaff(ctx);
     if (!(await ctx.db.get(args.titleId))) {
       throw new Error("Title not found");
     }
@@ -234,10 +231,9 @@ export const updateTitle = mutation({
   },
 });
 
-export const getTitleWorkspace = query({
+export const getTitleWorkspace = staffQuery({
   args: { titleId: v.id("titles") },
   handler: async (ctx, { titleId }): Promise<TitleWorkspace | null> => {
-    await requireStaff(ctx);
     const title = await ctx.db.get(titleId);
     if (!title) {
       return null;
@@ -373,10 +369,9 @@ export const getTitleWorkspace = query({
   },
 });
 
-export const listTitles = query({
+export const listTitles = staffQuery({
   args: {},
   handler: async (ctx) => {
-    await requireStaff(ctx);
     return await ctx.db.query("titles").collect();
   },
 });

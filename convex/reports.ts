@@ -1,11 +1,9 @@
-import { query } from "./_generated/server";
-import { requireStaff } from "./lib/auth";
+import { staffQuery } from "./lib/auth";
 import { derivePopularity } from "../lib/domain/reports";
 
-export const popularity = query({
+export const popularity = staffQuery({
   args: {},
   handler: async (ctx) => {
-    await requireStaff(ctx);
     const [titles, reservations, visitBooks, reviews] = await Promise.all([
       ctx.db.query("titles").collect(),
       ctx.db.query("reservations").collect(),

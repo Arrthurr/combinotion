@@ -1,15 +1,12 @@
 import { v } from "convex/values";
 import type { Doc } from "./_generated/dataModel";
 import {
-  action,
   internalAction,
   internalMutation,
   internalQuery,
-  mutation,
-  query,
 } from "./_generated/server";
 import { internal } from "./_generated/api";
-import { requireStaff } from "./lib/auth";
+import { staffAction, staffMutation, staffQuery } from "./lib/auth";
 import { required } from "./lib/validation";
 import { normalizeIsbn } from "../lib/domain/catalog";
 import { matchSchool } from "../lib/domain/requests";
@@ -90,10 +87,9 @@ function credentialPresent() {
   return Boolean(process.env.GOOGLE_SERVICE_ACCOUNT_JSON?.trim());
 }
 
-export const listFeeds = query({
+export const listFeeds = staffQuery({
   args: {},
   handler: async (ctx) => {
-    await requireStaff(ctx);
     const feeds = await ctx.db.query("intakeFeeds").collect();
     const present = credentialPresent();
     return feeds.map((feed) => ({
@@ -109,10 +105,9 @@ export const listFeeds = query({
   },
 });
 
-export const listHealth = query({
+export const listHealth = staffQuery({
   args: {},
   handler: async (ctx): Promise<FeedHealth[]> => {
-    await requireStaff(ctx);
     const feeds = await ctx.db.query("intakeFeeds").collect();
     const present = credentialPresent();
     const kinds: IntakeFeedKind[] = ["bookReviews", "donationApplications"];
@@ -129,7 +124,7 @@ export const listHealth = query({
   },
 });
 
-export const saveFeedConfig = mutation({
+export const saveFeedConfig = staffMutation({
   args: {
     feedId: v.optional(v.id("intakeFeeds")),
     kind: v.union(
@@ -141,7 +136,6 @@ export const saveFeedConfig = mutation({
     mapping: v.union(reviewMapping, donationMapping),
   },
   handler: async (ctx, args) => {
-    await requireStaff(ctx);
     const spreadsheetId = required(args.spreadsheetId, "Spreadsheet id");
     const tabName = required(args.tabName, "Tab name");
     if (args.kind === "bookReviews") {
@@ -178,10 +172,9 @@ export const saveFeedConfig = mutation({
   },
 });
 
-export const disableFeed = mutation({
+export const disableFeed = staffMutation({
   args: { feedId: v.id("intakeFeeds") },
   handler: async (ctx, { feedId }) => {
-    await requireStaff(ctx);
     const feed = await ctx.db.get(feedId);
     if (!feed) {
       throw new Error("Feed not found");
@@ -273,7 +266,7 @@ export const recordRows = internalMutation({
     await recordIntakeRows(ctx, feedId, rows as ParsedRow[]),
 });
 
-export const listItems = query({
+export const listItems = staffQuery({
   args: {
     state: v.optional(
       v.union(
@@ -284,7 +277,6 @@ export const listItems = query({
     ),
   },
   handler: async (ctx, { state }) => {
-    await requireStaff(ctx);
     const items = state
       ? await ctx.db
           .query("intakeItems")
@@ -366,7 +358,7 @@ function suggestionsFor(
   return refs;
 }
 
-export const resolveItem = mutation({
+export const resolveItem = staffMutation({
   args: {
     itemId: v.id("intakeItems"),
     fingerprint: v.string(),
@@ -391,7 +383,6 @@ export const resolveItem = mutation({
     ),
   },
   handler: async (ctx, args) => {
-    await requireStaff(ctx);
     return await resolveIntakeItem(ctx, args);
   },
 });
@@ -405,18 +396,16 @@ export const processItem = internalMutation({
     await processIntakeItem(ctx, itemId, operation),
 });
 
-export const acceptPendingReviews = mutation({
+export const acceptPendingReviews = staffMutation({
   args: { limit: v.optional(v.number()) },
   handler: async (ctx, { limit }) => {
-    await requireStaff(ctx);
     return await acceptPendingReviewItems(ctx, limit);
   },
 });
 
-export const createPendingDonations = mutation({
+export const createPendingDonations = staffMutation({
   args: { limit: v.optional(v.number()) },
   handler: async (ctx, { limit }) => {
-    await requireStaff(ctx);
     return await createPendingDonationItems(ctx, limit);
   },
 });
@@ -442,10 +431,9 @@ export const purgeExpiredRaw = internalMutation({
   handler: async (ctx) => await purgeExpiredIntakeRaw(ctx),
 });
 
-export const verifyAndEnableFeed = action({
+export const verifyAndEnableFeed = staffAction({
   args: { feedId: v.id("intakeFeeds") },
   handler: async (ctx, { feedId }) => {
-    await ctx.runQuery(internal.staff.assertStaff, {});
     const feed = await ctx.runQuery(internal.intake.getFeed, { feedId });
     if (!feed) {
       throw new Error("Feed not found");

@@ -2,12 +2,10 @@ import { v } from "convex/values";
 import type { Doc } from "./_generated/dataModel";
 import {
   internalMutation,
-  mutation,
-  query,
   type QueryCtx,
 } from "./_generated/server";
 import { releaseReservation, reserveTitle } from "./inventory";
-import { requireStaff } from "./lib/auth";
+import { staffMutation, staffQuery } from "./lib/auth";
 import { findTitleByIsbn } from "./lib/catalog";
 import { positiveInteger, required } from "./lib/validation";
 import { availableQuantity, isShortage } from "../lib/domain/inventory";
@@ -177,10 +175,9 @@ export const internalSubmit = internalMutation({
   },
 });
 
-export const listActive = query({
+export const listActive = staffQuery({
   args: {},
   handler: async (ctx) => {
-    await requireStaff(ctx);
     const requests = await ctx.db
       .query("schoolRequests")
       .withIndex("by_status_created", (q) =>
@@ -194,10 +191,9 @@ export const listActive = query({
   },
 });
 
-export const listExceptions = query({
+export const listExceptions = staffQuery({
   args: {},
   handler: async (ctx) => {
-    await requireStaff(ctx);
     const requests = await ctx.db
       .query("schoolRequests")
       .withIndex("by_status_created", (q) =>
@@ -249,7 +245,7 @@ export const internalConsumeRateLimit = internalMutation({
   },
 });
 
-export const resolveRequest = mutation({
+export const resolveRequest = staffMutation({
   args: {
     requestId: v.id("schoolRequests"),
     resolution: v.union(
@@ -258,7 +254,6 @@ export const resolveRequest = mutation({
     ),
   },
   handler: async (ctx, { requestId, resolution }) => {
-    await requireStaff(ctx);
     const request = await ctx.db.get(requestId);
     if (!request) {
       throw new Error("School request not found");

@@ -1,18 +1,16 @@
 import { v } from "convex/values";
-import { internal } from "../_generated/api";
-import { action } from "../_generated/server";
+import { staffAction } from "../lib/auth";
 import { normalizeIsbn } from "../../lib/domain/catalog";
 import {
   parseOpenLibraryBook,
   type IsbnLookupResult,
 } from "../../lib/domain/enrichment";
 
-export const lookupIsbn = action({
+export const lookupIsbn = staffAction({
   args: {
     isbn: v.string(),
   },
   handler: async (ctx, { isbn }): Promise<IsbnLookupResult> => {
-    await ctx.runQuery(internal.staff.assertStaff, {});
     const cleanIsbn = normalizeIsbn(isbn);
     if (cleanIsbn.length === 0) {
       throw new Error("ISBN is required");

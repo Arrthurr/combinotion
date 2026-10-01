@@ -1,6 +1,6 @@
 import { v } from "convex/values";
-import { mutation, query, type MutationCtx, type QueryCtx } from "./_generated/server";
-import { requireStaff } from "./lib/auth";
+import { query, type MutationCtx, type QueryCtx } from "./_generated/server";
+import { staffMutation, staffQuery } from "./lib/auth";
 import {
   defaultOrgSettings,
   type OrgSettings,
@@ -27,10 +27,9 @@ export async function loadOrgSettings(ctx: QueryCtx | MutationCtx) {
   return await readSettings(ctx);
 }
 
-export const get = query({
+export const get = staffQuery({
   args: {},
   handler: async (ctx) => {
-    await requireStaff(ctx);
     return await readSettings(ctx);
   },
 });
@@ -43,7 +42,7 @@ export const publicRequestGate = query({
   },
 });
 
-export const update = mutation({
+export const update = staffMutation({
   args: {
     lowStockThreshold: v.number(),
     publicRequests: v.union(
@@ -55,7 +54,6 @@ export const update = mutation({
     ),
   },
   handler: async (ctx, args) => {
-    await requireStaff(ctx);
     if (!Number.isInteger(args.lowStockThreshold) || args.lowStockThreshold < 1) {
       throw new Error("Low-stock threshold must be a positive whole number");
     }

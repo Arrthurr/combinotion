@@ -1,12 +1,8 @@
 import { v } from "convex/values";
 import type { Doc } from "./_generated/dataModel";
-import {
-  mutation,
-  query,
-  type QueryCtx,
-} from "./_generated/server";
+import type { QueryCtx } from "./_generated/server";
 import { appendInventoryMovement } from "./inventory";
-import { requireStaff } from "./lib/auth";
+import { staffMutation, staffQuery } from "./lib/auth";
 import { positiveInteger } from "./lib/validation";
 import {
   nextOrderStatus,
@@ -46,7 +42,7 @@ async function orderDetails(ctx: QueryCtx, order: Doc<"orders">) {
   };
 }
 
-export const createOrder = mutation({
+export const createOrder = staffMutation({
   args: {
     supplierId: v.id("suppliers"),
     lines: v.array(
@@ -57,7 +53,6 @@ export const createOrder = mutation({
     ),
   },
   handler: async (ctx, { supplierId, lines }) => {
-    await requireStaff(ctx);
     const supplier = await ctx.db.get(supplierId);
     if (!supplier) {
       throw new Error("Supplier not found");
@@ -105,13 +100,12 @@ export const createOrder = mutation({
   },
 });
 
-export const markOrdered = mutation({
+export const markOrdered = staffMutation({
   args: {
     orderId: v.id("orders"),
     expectedAt: v.optional(v.number()),
   },
   handler: async (ctx, { orderId, expectedAt }) => {
-    await requireStaff(ctx);
     const order = await ctx.db.get(orderId);
     if (!order) {
       throw new Error("Order not found");
@@ -128,13 +122,12 @@ export const markOrdered = mutation({
   },
 });
 
-export const receiveLine = mutation({
+export const receiveLine = staffMutation({
   args: {
     orderLineId: v.id("orderLines"),
     receivedQuantity: v.number(),
   },
   handler: async (ctx, { orderLineId, receivedQuantity }) => {
-    await requireStaff(ctx);
     const line = await ctx.db.get(orderLineId);
     if (!line) {
       throw new Error("Order line not found");
@@ -177,19 +170,17 @@ export const receiveLine = mutation({
   },
 });
 
-export const listOrders = query({
+export const listOrders = staffQuery({
   args: {},
   handler: async (ctx) => {
-    await requireStaff(ctx);
     const orders = await ctx.db.query("orders").order("desc").collect();
     return await Promise.all(orders.map((order) => orderDetails(ctx, order)));
   },
 });
 
-export const getOrder = query({
+export const getOrder = staffQuery({
   args: { orderId: v.id("orders") },
   handler: async (ctx, { orderId }) => {
-    await requireStaff(ctx);
     const order = await ctx.db.get(orderId);
     if (!order) {
       throw new Error("Order not found");

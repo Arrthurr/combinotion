@@ -1,6 +1,5 @@
 import { v } from "convex/values";
-import { mutation, query } from "./_generated/server";
-import { requireStaff } from "./lib/auth";
+import { staffMutation, staffQuery } from "./lib/auth";
 import { required } from "./lib/validation";
 import { roleValidator, type Role } from "../lib/domain/vocabulary";
 
@@ -14,14 +13,13 @@ function validatedRoles(roles: Role[]) {
   return roles;
 }
 
-export const createPerson = mutation({
+export const createPerson = staffMutation({
   args: {
     name: v.string(),
     email: v.optional(v.string()),
     roles: v.array(roleValidator),
   },
   handler: async (ctx, { name, email, roles }) => {
-    await requireStaff(ctx);
     const cleanEmail = email?.trim();
     return await ctx.db.insert("people", {
       name: required(name, "Name"),
@@ -31,22 +29,20 @@ export const createPerson = mutation({
   },
 });
 
-export const listPeople = query({
+export const listPeople = staffQuery({
   args: {},
   handler: async (ctx) => {
-    await requireStaff(ctx);
     const people = await ctx.db.query("people").collect();
     return people.sort((left, right) => left.name.localeCompare(right.name));
   },
 });
 
-export const setRoles = mutation({
+export const setRoles = staffMutation({
   args: {
     personId: v.id("people"),
     roles: v.array(roleValidator),
   },
   handler: async (ctx, { personId, roles }) => {
-    await requireStaff(ctx);
     const person = await ctx.db.get(personId);
     if (!person) {
       throw new Error("Person not found");

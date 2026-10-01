@@ -1,7 +1,6 @@
 import { v } from "convex/values";
 import type { Id } from "./_generated/dataModel";
-import { mutation, query } from "./_generated/server";
-import { requireStaff } from "./lib/auth";
+import { staffMutation, staffQuery } from "./lib/auth";
 
 export type ModerationReview = {
   reviewId: Id<"reviews">;
@@ -14,10 +13,9 @@ export type ModerationReview = {
   approved: boolean;
 };
 
-export const list = query({
+export const list = staffQuery({
   args: {},
   handler: async (ctx): Promise<ModerationReview[]> => {
-    await requireStaff(ctx);
     const reviews = await ctx.db.query("reviews").collect();
     const joined = await Promise.all(
       reviews.map(async (review) => {
@@ -47,13 +45,12 @@ export const list = query({
   },
 });
 
-export const setApproved = mutation({
+export const setApproved = staffMutation({
   args: {
     reviewId: v.id("reviews"),
     approved: v.boolean(),
   },
   handler: async (ctx, { reviewId, approved }) => {
-    await requireStaff(ctx);
     await ctx.db.patch(reviewId, { approved });
     return reviewId;
   },

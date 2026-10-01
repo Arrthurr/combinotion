@@ -1,6 +1,6 @@
 import { v } from "convex/values";
-import { api, internal } from "./_generated/api";
-import { action } from "./_generated/server";
+import { api } from "./_generated/api";
+import { staffAction } from "./lib/auth";
 import {
   renderVisitRecapPdf,
   visitRecapFilename,
@@ -12,12 +12,11 @@ export type GenerateRecapResult = {
   bytes: ArrayBuffer;
 };
 
-export const generateRecap = action({
+export const generateRecap = staffAction({
   args: {
     visitId: v.id("visits"),
   },
   handler: async (ctx, { visitId }): Promise<GenerateRecapResult> => {
-    await ctx.runQuery(internal.staff.assertStaff, {});
     const visit = await ctx.runQuery(api.visits.getVisit, { visitId });
     if (!visit) {
       throw new Error("Visit not found");

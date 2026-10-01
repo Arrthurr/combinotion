@@ -1,18 +1,14 @@
 import { v } from "convex/values";
 import type { Doc } from "./_generated/dataModel";
-import {
-  mutation,
-  query,
-  type QueryCtx,
-} from "./_generated/server";
-import { requireStaff } from "./lib/auth";
+import type { QueryCtx } from "./_generated/server";
+import { staffMutation, staffQuery } from "./lib/auth";
 import * as lifecycle from "./lib/visitLifecycle";
 import {
   personParticipation,
   titleParticipation,
 } from "../lib/domain/visits";
 
-export const saveVisit = mutation({
+export const saveVisit = staffMutation({
   args: {
     visitId: v.optional(v.id("visits")),
     schoolId: v.id("schools"),
@@ -29,15 +25,13 @@ export const saveVisit = mutation({
     ),
   },
   handler: async (ctx, args) => {
-    await requireStaff(ctx);
     return await lifecycle.saveVisit(ctx, args);
   },
 });
 
-export const deleteVisit = mutation({
+export const deleteVisit = staffMutation({
   args: { visitId: v.id("visits") },
   handler: async (ctx, { visitId }) => {
-    await requireStaff(ctx);
     return await lifecycle.deleteVisit(ctx, visitId);
   },
 });
@@ -75,10 +69,9 @@ async function bookDetails(
   };
 }
 
-export const listVisits = query({
+export const listVisits = staffQuery({
   args: {},
   handler: async (ctx) => {
-    await requireStaff(ctx);
     const visits = await ctx.db.query("visits").collect();
     const detailed = await Promise.all(
       visits.map(async (visit) => {
@@ -114,10 +107,9 @@ export const listVisits = query({
   },
 });
 
-export const getVisit = query({
+export const getVisit = staffQuery({
   args: { visitId: v.id("visits") },
   handler: async (ctx, { visitId }) => {
-    await requireStaff(ctx);
     const visit = await ctx.db.get(visitId);
     if (!visit) {
       return null;
@@ -165,19 +157,17 @@ export const getVisit = query({
   },
 });
 
-export const listTitleParticipation = query({
+export const listTitleParticipation = staffQuery({
   args: { titleId: v.id("titles") },
   handler: async (ctx, { titleId }) => {
-    await requireStaff(ctx);
     const rows = await ctx.db.query("visitBooks").collect();
     return titleParticipation(rows, titleId);
   },
 });
 
-export const listPersonParticipation = query({
+export const listPersonParticipation = staffQuery({
   args: { personId: v.id("people") },
   handler: async (ctx, { personId }) => {
-    await requireStaff(ctx);
     const rows = await ctx.db
       .query("visitPeople")
       .withIndex("by_person", (q) => q.eq("personId", personId))
@@ -186,10 +176,9 @@ export const listPersonParticipation = query({
   },
 });
 
-export const listConsumptionExceptions = query({
+export const listConsumptionExceptions = staffQuery({
   args: {},
   handler: async (ctx) => {
-    await requireStaff(ctx);
     const books = await ctx.db.query("visitBooks").collect();
     const ambiguous = books.filter(
       (book) => book.consumptionStatus === "ambiguous",
