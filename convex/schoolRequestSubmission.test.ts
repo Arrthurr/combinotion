@@ -247,10 +247,18 @@ describe.each(["Convex", "Next"])(
         idempotencyKey: " same-key ",
       });
       const first = await submit(body);
-      const replay = await submit(body);
       expect(first.status).toBe(201);
-      expect(replay.status).toBe(201);
-      expect(await replay.json()).toEqual(await first.json());
+      const original = await first.json();
+      for (let attempt = 0; attempt < 7; attempt++) {
+        const replay = await submit(body);
+        expect(replay.status).toBe(201);
+        expect(await replay.json()).toEqual(original);
+      }
+      // Only the original submission used the email's attempt budget.
+      for (let attempt = 0; attempt < 4; attempt++) {
+        expect((await submit(JSON.stringify(valid))).status).toBe(409);
+      }
+      expect((await submit(JSON.stringify(valid))).status).toBe(429);
       const requests = await asStaff.query(api.schoolRequests.listActive, {});
       expect(requests).toHaveLength(1);
       expect(requests[0].lines).toHaveLength(1);

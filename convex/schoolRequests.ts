@@ -91,6 +91,19 @@ export const internalSubmit = internalMutation({
       idempotencyKey: cleanIdempotencyKey,
     } = parsed.data;
 
+    // Replaying a committed request is not a new submission attempt.
+    if (cleanIdempotencyKey !== undefined) {
+      const existing = await ctx.db
+        .query("schoolRequests")
+        .withIndex("by_idempotencyKey", (q) =>
+          q.eq("idempotencyKey", cleanIdempotencyKey),
+        )
+        .unique();
+      if (existing) {
+        return { kind: "submitted", reference: existing.reference };
+      }
+    }
+
     // One durable, email-keyed policy, in the same transaction as submission.
     const clientKey = schoolRequestRateLimitKeyFromEmail(cleanEmail);
     const now = Date.now();
@@ -113,18 +126,6 @@ export const internalSubmit = internalMutation({
         clientKey,
         attempts: recent,
       });
-    }
-
-    if (cleanIdempotencyKey !== undefined) {
-      const existing = await ctx.db
-        .query("schoolRequests")
-        .withIndex("by_idempotencyKey", (q) =>
-          q.eq("idempotencyKey", cleanIdempotencyKey),
-        )
-        .unique();
-      if (existing) {
-        return { kind: "submitted", reference: existing.reference };
-      }
     }
 
     const titleIds = new Set<string>();
