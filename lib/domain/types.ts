@@ -1,14 +1,14 @@
-export const ROLES = [
-  "donor",
-  "professional",
-  "volunteer",
-  "schoolStaff",
-  "board",
-  "reader",
-  "reviewer",
-] as const;
-
-export type Role = (typeof ROLES)[number];
+import type { Role, VisitPersonKind, ConsumptionStatus, MovementKind } from "./vocabulary";
+export { ROLES } from "./vocabulary";
+export type {
+  Role,
+  VisitPersonKind,
+  ConsumptionStatus,
+  MovementKind,
+  OrderStatus,
+  RequestStatus,
+  MatchStatus,
+} from "./vocabulary";
 
 export type Person = {
   name: string;
@@ -35,15 +35,11 @@ export type Visit<SchoolId = string> = {
   effectGeneration: number;
 };
 
-export type VisitPersonKind = "staff" | "reader";
-
 export type VisitPerson<VisitId = string, PersonId = string> = {
   visitId: VisitId;
   personId: PersonId;
   kind: VisitPersonKind;
 };
-
-export type ConsumptionStatus = "consumed" | "none" | "ambiguous";
 
 export type VisitBook<
   VisitId = string,
@@ -59,15 +55,6 @@ export type VisitBook<
   consumedQuantity: number;
 };
 
-export type MovementKind =
-  | "openingBalance"
-  | "receipt"
-  | "adjustment"
-  | "donation"
-  | "reservation"
-  | "release"
-  | "reservationConsumption";
-
 export type StockState = {
   quantityOnHand: number;
   activeReservedQuantity: number;
@@ -82,16 +69,10 @@ export type Movement = {
   createdAt: number;
 };
 
-export type OrderStatus = "needed" | "ordered" | "received";
-
 export type OrderLineQuantities = {
   orderedQuantity: number;
   receivedQuantity: number;
 };
-
-export type RequestStatus = "active" | "cancelled" | "declined" | "fulfilled";
-
-export type MatchStatus = "attached" | "unmatched" | "ambiguous";
 
 export type RequestLine = {
   isbn: string;

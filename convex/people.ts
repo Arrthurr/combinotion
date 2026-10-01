@@ -2,17 +2,7 @@ import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
 import { requireStaff } from "./lib/auth";
 import { required } from "./lib/validation";
-import type { Role } from "../lib/domain/types";
-
-const role = v.union(
-  v.literal("donor"),
-  v.literal("professional"),
-  v.literal("volunteer"),
-  v.literal("schoolStaff"),
-  v.literal("board"),
-  v.literal("reader"),
-  v.literal("reviewer"),
-);
+import { roleValidator, type Role } from "../lib/domain/vocabulary";
 
 function validatedRoles(roles: Role[]) {
   if (roles.length === 0) {
@@ -28,7 +18,7 @@ export const createPerson = mutation({
   args: {
     name: v.string(),
     email: v.optional(v.string()),
-    roles: v.array(role),
+    roles: v.array(roleValidator),
   },
   handler: async (ctx, { name, email, roles }) => {
     await requireStaff(ctx);
@@ -53,7 +43,7 @@ export const listPeople = query({
 export const setRoles = mutation({
   args: {
     personId: v.id("people"),
-    roles: v.array(role),
+    roles: v.array(roleValidator),
   },
   handler: async (ctx, { personId, roles }) => {
     await requireStaff(ctx);

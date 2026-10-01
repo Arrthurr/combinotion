@@ -11,36 +11,11 @@ import {
   type VisitBoardData,
   type VisitPlanResolution,
 } from "../lib/domain/views";
-
-const tableColumnValidator = v.union(
-  v.literal("author"),
-  v.literal("isbn"),
-  v.literal("quantityOnHand"),
-  v.literal("activeReservedQuantity"),
-  v.literal("availableQuantity"),
-  v.literal("lowStock"),
-  v.literal("shortage"),
-  v.literal("reorderNeeded"),
-  v.literal("synopsis"),
-  v.literal("notes"),
-  v.literal("purchaseInfo"),
-);
-
-const visitPlanStageValidator = v.union(
-  v.literal("readerConfirmation"),
-  v.literal("schoolContact"),
-  v.literal("securingBooks"),
-);
-
-const visitPlanResolutionValidator = v.union(
-  v.object({
-    kind: v.literal("visited"),
-    visitId: v.id("visits"),
-  }),
-  v.object({
-    kind: v.literal("archived"),
-  }),
-);
+import {
+  tableColumnValidator,
+  visitPlanStageValidator,
+  visitPlanResolutionValidator,
+} from "../lib/domain/vocabulary";
 
 function emptyVisitPlanColumns<
   PlanId = string,
@@ -269,7 +244,7 @@ export const setVisitPlanStage = mutation({
 export const resolveVisitPlan = mutation({
   args: {
     planId: v.id("visitPlans"),
-    resolution: visitPlanResolutionValidator,
+    resolution: visitPlanResolutionValidator(v.id("visits")),
   },
   handler: async (ctx, { planId, resolution }) => {
     await requireStaff(ctx);

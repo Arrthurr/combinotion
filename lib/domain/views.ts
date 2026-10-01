@@ -1,20 +1,7 @@
 import type { MovementKind, OrderStatus } from "./types";
-
-export const TABLE_COLUMNS = [
-  "author",
-  "isbn",
-  "quantityOnHand",
-  "activeReservedQuantity",
-  "availableQuantity",
-  "lowStock",
-  "shortage",
-  "reorderNeeded",
-  "synopsis",
-  "notes",
-  "purchaseInfo",
-] as const;
-
-export type TableColumn = (typeof TABLE_COLUMNS)[number];
+import { TABLE_COLUMNS, type TableColumn, type VisitPlanStage } from "./vocabulary";
+export { TABLE_COLUMNS, VISIT_PLAN_STAGES } from "./vocabulary";
+export type { TableColumn, VisitPlanStage, VisitPlanResolution } from "./vocabulary";
 
 export const DEFAULT_TABLE_COLUMNS: readonly TableColumn[] = [
   "author",
@@ -39,14 +26,6 @@ export function sanitizeTableColumns(
   });
 }
 
-export const VISIT_PLAN_STAGES = [
-  "readerConfirmation",
-  "schoolContact",
-  "securingBooks",
-] as const;
-
-export type VisitPlanStage = (typeof VISIT_PLAN_STAGES)[number];
-
 export function stageNeighbors(stage: VisitPlanStage): {
   previous?: VisitPlanStage;
   next?: VisitPlanStage;
@@ -67,10 +46,6 @@ export function stageNeighbors(stage: VisitPlanStage): {
     }
   }
 }
-
-export type VisitPlanResolution<VisitId = string> =
-  | { kind: "visited"; visitId: VisitId }
-  | { kind: "archived" };
 
 export type BoardCard<PlanId = string, SchoolId = string> = {
   planId: PlanId;
